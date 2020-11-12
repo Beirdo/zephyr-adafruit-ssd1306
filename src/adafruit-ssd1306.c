@@ -32,12 +32,6 @@ All text above, and the splash screen below must be included in any redistributi
  * released under Apache 2.0 License
  */
 
-/*
- * Since the SSD1306 driver has no export of the bus, and we need to write 
- * commands that the driver doesn't support directly, we will do the bus lookup
- * ourselves, in the same way they do
- */
-#define DT_DRV_COMPAT solomon_ssd1306fb
 
 #include <logging/log.h>
 LOG_MODULE_REGISTER(adafruit_ssd1306, CONFIG_DISPLAY_LOG_LEVEL);
@@ -45,7 +39,6 @@ LOG_MODULE_REGISTER(adafruit_ssd1306, CONFIG_DISPLAY_LOG_LEVEL);
 #include <zephyr.h>
 #include <string.h>
 #include <device.h>
-#include <drivers/i2c.h>
 #include <drivers/display.h>
 
 #include "adafruit-ssd1306.h"
@@ -56,16 +49,13 @@ LOG_MODULE_REGISTER(adafruit_ssd1306, CONFIG_DISPLAY_LOG_LEVEL);
 
 static void _drawFastVLineInternal(int16_t x, int16_t y, int16_t h, uint16_t color);
 static void _drawFastHLineInternal(int16_t x, int16_t y, int16_t w, uint16_t color);
-static void _ssd1306_command(uint8_t c);
 static void _operCache(int16_t x, int16_t y, oper_t oper_, uint8_t mask);
+extern int ssd1306_display_write(const struct device *dev, uint8_t *buf, size_t len, bool command);
 
 struct adafruit_ssd1306_data_t {
   const struct device *dev;
-  const struct device *bus;
-  uint8_t i2c_addr;
-  int8_t  vccstate;
   uint8_t draw_cache[SSD1306_RAM_MIRROR_SIZE];
-  bool show_logo;
+  uint8_t buffer[16];
   int16_t raw_width;	// Raw display, never changes
   int16_t raw_height;	// Raw display, never changes
   int16_t width;	// modified by current rotation
@@ -78,12 +68,12 @@ struct adafruit_ssd1306_data_t {
   uint8_t rotation;
   bool wrap;
   bool cp437;  // if set, use correct CP437 characterset (default off)
+  bool show_logo;
   GFXfont *gfxFont;
 };
 
 static struct adafruit_ssd1306_data_t display_data = {
   .dev = NULL,
-  .vccstate = SSD1306_SWITCHCAPVCC,
   .rotation = 0,
   .cursor_x = 0,
   .cursor_y = 0,
@@ -95,29 +85,14 @@ static struct adafruit_ssd1306_data_t display_data = {
   .gfxFont = NULL,
 };
 
-#if !DT_INST_ON_BUS(0, i2c)
-#error This does not support SPI-connected SSD1306 at this time
-#endif
-
-int SSD1306_initialize(uint8_t vccstate) {
-  display_data.vccstate = vccstate;
-
-	display_data.bus = device_get_binding(DT_INST_BUS_LABEL(0));
-	if (display_data.bus == NULL) {
-		LOG_ERR("Failed to get pointer to %s device!",
-			    DT_INST_BUS_LABEL(0));
-		return -EINVAL;
-	}
-
-  display_data.dev = device_get_binding(DT_LABEL(DT_INST(0, DT_DRV_COMPAT)));
+int SSD1306_initialize(void) {
+  display_data.dev = device_get_binding(DT_LABEL(DT_INST(0, solomon_ssd1306fb)));
 	if (display_data.dev == NULL) {
 		LOG_ERR("Failed to get pointer to %s device!",
-			    DT_LABEL(DT_INST(0, DT_DRV_COMPAT)));
+			    DT_LABEL(DT_INST(0, solomon_ssd1306fb)));
 		return -EINVAL;
 	}
 
-  display_data.i2c_addr = DT_INST_REG_ADDR(0);
-  
   struct display_capabilities caps;
   display_get_capabilities(display_data.dev, &caps);
   display_data.raw_width = caps.x_resolution;
@@ -132,16 +107,6 @@ int SSD1306_initialize(uint8_t vccstate) {
 void SSD1306_reset(void) {
   SSD1306_clearDisplay();
   display_data.show_logo = true;
-}
-
-void SSD1306_displayOff(void)
-{
-  _ssd1306_command(SSD1306_DISPLAYOFF);            // 0xAE
-}
-
-void SSD1306_displayOn(void)
-{
-  _ssd1306_command(SSD1306_DISPLAYON);             //--turn on oled panel
 }
 
 static void _operCache(int16_t x, int16_t y, oper_t oper_, uint8_t mask)
@@ -166,128 +131,143 @@ static void _operCache(int16_t x, int16_t y, oper_t oper_, uint8_t mask)
     *addr = data;
 }
 
-static void _ssd1306_command(uint8_t c) {
-  // I2C message
-  uint8_t control = 0x00;    // Co = 0, D/C = 0
-	int ret = i2c_reg_write_byte(display_data.bus, display_data.i2c_addr,
-	                             control, c);
-
-	ARG_UNUSED(ret);
-}
-
-// startScrolLright
+// startScrollRight
 // Activate a right handed scroll for rows start through stop
 // Hint, the display is 16 rows tall. To scroll the whole display, run:
 // display.scrollright(0x00, 0x0F)
-void SSD1306_startScrollRight(uint8_t start, uint8_t stop){
-  _ssd1306_command(SSD1306_RIGHT_HORIZONTAL_SCROLL);
-  _ssd1306_command(0x00);
-  _ssd1306_command(start);
-  _ssd1306_command(0x00);
-  _ssd1306_command(stop);
-  _ssd1306_command(0x00);
-  _ssd1306_command(0xFF);
-  _ssd1306_command(SSD1306_ACTIVATE_SCROLL);
+int SSD1306_startScrollRight(uint8_t start, uint8_t stop)
+{
+  uint8_t *buf = display_data.buffer;
+  size_t buflen = 0;
+  
+  buf[buflen++] = SSD1306_RIGHT_HORIZONTAL_SCROLL;
+  buf[buflen++] = 0x00;
+  buf[buflen++] = start;
+  buf[buflen++] = 0x00;
+  buf[buflen++] = stop;
+  buf[buflen++] = 0x00;
+  buf[buflen++] = 0xFF;
+  buf[buflen++] = SSD1306_ACTIVATE_SCROLL;
+
+  return ssd1306_display_write(display_data.dev, buf, buflen, true);
 }
 
 // startScrollLeft
 // Activate a right handed scroll for rows start through stop
 // Hint, the display is 16 rows tall. To scroll the whole display, run:
 // display.scrollright(0x00, 0x0F)
-void SSD1306_startScrollLeft(uint8_t start, uint8_t stop){
-  _ssd1306_command(SSD1306_LEFT_HORIZONTAL_SCROLL);
-  _ssd1306_command(0x00);
-  _ssd1306_command(start);
-  _ssd1306_command(0x00);
-  _ssd1306_command(stop);
-  _ssd1306_command(0x00);
-  _ssd1306_command(0xFF);
-  _ssd1306_command(SSD1306_ACTIVATE_SCROLL);
+int SSD1306_startScrollLeft(uint8_t start, uint8_t stop)
+{
+  uint8_t *buf = display_data.buffer;
+  size_t buflen = 0;
+  
+  buf[buflen++] = SSD1306_LEFT_HORIZONTAL_SCROLL;
+  buf[buflen++] = 0x00;
+  buf[buflen++] = start;
+  buf[buflen++] = 0x00;
+  buf[buflen++] = stop;
+  buf[buflen++] = 0x00;
+  buf[buflen++] = 0xFF;
+  buf[buflen++] = SSD1306_ACTIVATE_SCROLL;
+
+  return ssd1306_display_write(display_data.dev, buf, buflen, true);
 }
 
 // startScrollDiagRight
 // Activate a diagonal scroll for rows start through stop
 // Hint, the display is 16 rows tall. To scroll the whole display, run:
 // display.scrollright(0x00, 0x0F)
-void SSD1306_startScrollDiagRight(uint8_t start, uint8_t stop){
-  _ssd1306_command(SSD1306_SET_VERTICAL_SCROLL_AREA);
-  _ssd1306_command(0x00);
-  _ssd1306_command(SSD1306_LCDHEIGHT);
-  _ssd1306_command(SSD1306_VERTICAL_AND_RIGHT_HORIZONTAL_SCROLL);
-  _ssd1306_command(0x00);
-  _ssd1306_command(start);
-  _ssd1306_command(0x00);
-  _ssd1306_command(stop);
-  _ssd1306_command(0x01);
-  _ssd1306_command(SSD1306_ACTIVATE_SCROLL);
+int SSD1306_startScrollDiagRight(uint8_t start, uint8_t stop)
+{
+  uint8_t *buf = display_data.buffer;
+  size_t buflen = 0;
+  
+  buf[buflen++] = SSD1306_SET_VERTICAL_SCROLL_AREA;
+  buf[buflen++] = 0x00;
+  buf[buflen++] = SSD1306_LCDHEIGHT;
+  buf[buflen++] = SSD1306_VERTICAL_AND_RIGHT_HORIZONTAL_SCROLL;
+  buf[buflen++] = 0x00;
+  buf[buflen++] = start;
+  buf[buflen++] = 0x00;
+  buf[buflen++] = stop;
+  buf[buflen++] = 0x01;
+  buf[buflen++] = SSD1306_ACTIVATE_SCROLL;
+
+  return ssd1306_display_write(display_data.dev, buf, buflen, true);
 }
 
 // startScrollDiagLeft
 // Activate a diagonal scroll for rows start through stop
 // Hint, the display is 16 rows tall. To scroll the whole display, run:
 // display.scrollright(0x00, 0x0F)
-void SSD1306_startScrollDiagLeft(uint8_t start, uint8_t stop){
-  _ssd1306_command(SSD1306_SET_VERTICAL_SCROLL_AREA);
-  _ssd1306_command(0x00);
-  _ssd1306_command(SSD1306_LCDHEIGHT);
-  _ssd1306_command(SSD1306_VERTICAL_AND_LEFT_HORIZONTAL_SCROLL);
-  _ssd1306_command(0x00);
-  _ssd1306_command(start);
-  _ssd1306_command(0x00);
-  _ssd1306_command(stop);
-  _ssd1306_command(0x01);
-  _ssd1306_command(SSD1306_ACTIVATE_SCROLL);
-}
-
-void SSD1306_stopScroll(void){
-  _ssd1306_command(SSD1306_DEACTIVATE_SCROLL);
-}
-
-// Dim the display
-// dim = true: display is dimmed
-// dim = false: display is normal
-void SSD1306_dim(bool dim) {
-  uint8_t contrast;
-
-  if (dim) {
-    contrast = 0; // Dimmed display
-  } else {
-    if (display_data.vccstate == SSD1306_EXTERNALVCC) {
-      contrast = 0x9F;
-    } else {
-      contrast = 0xCF;
-    }
-  }
+int SSD1306_startScrollDiagLeft(uint8_t start, uint8_t stop)
+{
+  uint8_t *buf = display_data.buffer;
+  size_t buflen = 0;
   
-  // the range of contrast to too small to be really useful
-  // it is useful to dim the display
-  _ssd1306_command(SSD1306_SETCONTRAST);
-  _ssd1306_command(contrast);
+  buf[buflen++] = SSD1306_SET_VERTICAL_SCROLL_AREA;
+  buf[buflen++] = 0x00;
+  buf[buflen++] = SSD1306_LCDHEIGHT;
+  buf[buflen++] = SSD1306_VERTICAL_AND_LEFT_HORIZONTAL_SCROLL;
+  buf[buflen++] = 0x00;
+  buf[buflen++] = start;
+  buf[buflen++] = 0x00;
+  buf[buflen++] = stop;
+  buf[buflen++] = 0x01;
+  buf[buflen++] = SSD1306_ACTIVATE_SCROLL;
+
+  return ssd1306_display_write(display_data.dev, buf, buflen, true);
 }
 
-void SSD1306_display(void) {
-  _ssd1306_command(SSD1306_COLUMNADDR);
-  _ssd1306_command(0);                  // Column start address (0 = reset)
-  _ssd1306_command(SSD1306_LCDWIDTH-1); // Column end address (127 = reset)
+int SSD1306_stopScroll(void)
+{
+  uint8_t *buf = display_data.buffer;
+  size_t buflen = 0;
+  
+  buf[buflen++] = SSD1306_DEACTIVATE_SCROLL;
 
-  _ssd1306_command(SSD1306_PAGEADDR);
-  _ssd1306_command(0);                  // Page start address (0 = reset)
-  _ssd1306_command((SSD1306_LCDHEIGHT >> 3) - 1); // Page end address
+  return ssd1306_display_write(display_data.dev, buf, buflen, true);
+}
+
+int SSD1306_display(void) 
+{
+  uint8_t *buf = display_data.buffer;
+  size_t buflen = 0;
+  
+  buf[buflen++] = SSD1306_COLUMNADDR;
+  buf[buflen++] = 0;                    // Column start address (0 = reset)
+  buf[buflen++] = SSD1306_LCDWIDTH - 1; // Column end address (127 = reset)
+  buf[buflen++] = SSD1306_PAGEADDR;
+  buf[buflen++] = 0;                    // Page start address (0 = reset)
+  buf[buflen++] = (SSD1306_LCDHEIGHT >> 3) - 1; // Page end address
+  int ret = ssd1306_display_write(display_data.dev, buf, buflen, true);
+  
+  if (ret != 0) {
+    return ret;
+  }
 
   uint8_t *cache = (display_data.show_logo ? (uint8_t *)lcd_logo : display_data.draw_cache);
 
-  for (int16_t y = 0; y < SSD1306_LCDHEIGHT; y += 8) {
-    for (uint8_t x = 0; x < SSD1306_LCDWIDTH; x += 16) {
-      // Co = 0, D/C = 1
-      int ret = i2c_burst_write(display_data.bus, display_data.i2c_addr,
-                                0x40, &cache_pixel(cache, x, y), 16);
-      ARG_UNUSED(ret);
+  for (int y = 0; y < SSD1306_LCDHEIGHT; y += 8) {
+    for (int x = 0; x < SSD1306_LCDWIDTH; x += 16) {
+      /*
+       * Send one cache row at a time.  This allows us to add support for external RAM
+       * with a minimal on-CPU cache.
+       *
+       * This will send a block of 16x8 pixels per iteration
+       */
+      ret = ssd1306_display_write(display_data.dev, &cache_pixel(cache, x, y), 16, false);
+      if (ret != 0) {
+        return ret;
+      }
     }
   }
 
   if (display_data.show_logo) {
     SSD1306_clearDisplay();
   }
+  
+  return 0;
 }
 
 // clear everything
@@ -297,7 +277,8 @@ void SSD1306_clearDisplay(void) {
 }
 
 // the most basic function, set a single pixel
-void SSD1306_drawPixel(int16_t x, int16_t y, uint16_t color) {
+void SSD1306_drawPixel(int16_t x, int16_t y, uint16_t color)
+{
   if ((x < 0) || (x >= display_data.width) || (y < 0) || (y >= display_data.height))
     return;
 
@@ -337,7 +318,8 @@ void SSD1306_drawPixel(int16_t x, int16_t y, uint16_t color) {
 }
 
 
-void SSD1306_drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color) {
+void SSD1306_drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color) 
+{
   int bSwap = 0;
   switch(display_data.rotation) {
     case 0:
@@ -371,7 +353,8 @@ void SSD1306_drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color) {
   }
 }
 
-static void _drawFastHLineInternal(int16_t x, int16_t y, int16_t w, uint16_t color) {
+static void _drawFastHLineInternal(int16_t x, int16_t y, int16_t w, uint16_t color) 
+{
   // Do bounds/limit checks
   if (y < 0 || y >= display_data.raw_height) {
     return;
@@ -446,7 +429,12 @@ void SSD1306_drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t color) {
 }
 
 
-static void _drawFastVLineInternal(int16_t x, int16_t __y, int16_t __h, uint16_t color) {
+static const uint8_t premask[8] = { 0x00, 0x80, 0xC0, 0xE0, 0xF0, 0xF8, 0xFC, 0xFE };
+static const uint8_t postmask[8] = { 0x00, 0x01, 0x03, 0x07, 0x0F, 0x1F, 0x3F, 0x7F };
+
+
+static void _drawFastVLineInternal(int16_t x, int16_t y, int16_t h, uint16_t color) 
+{
 
   // do nothing if we're off the left or right side of the screen
   if (x < 0 || x >= display_data.raw_width) {
@@ -454,26 +442,21 @@ static void _drawFastVLineInternal(int16_t x, int16_t __y, int16_t __h, uint16_t
   }
 
   // make sure we don't try to draw below 0
-  if (__y < 0) {
-    // __y is negative, this will subtract enough from __h to account for __y being 0
-    __h += __y;
-    __y = 0;
+  if (y < 0) {
+    // y is negative, this will subtract enough from h to account for y being 0
+    h += y;
+    y = 0;
   }
 
   // make sure we don't go past the height of the display
-  if ((__y + __h) > display_data.raw_height) {
-    __h = (display_data.raw_height - __y);
+  if (y + h > display_data.raw_height) {
+    h = display_data.raw_height - y;
   }
 
   // if our height is now negative, punt
-  if (__h <= 0) {
+  if (h <= 0) {
     return;
   }
-
-  // this display doesn't need ints for coordinates, use local byte registers
-  // for faster juggling
-  register uint8_t y = __y;
-  register uint8_t h = __h;
 
   // do the first partial byte, if necessary - this requires some masking
   register uint8_t mod = (y & 0x07);
@@ -484,13 +467,11 @@ static void _drawFastVLineInternal(int16_t x, int16_t __y, int16_t __h, uint16_t
 
     // note - lookup table results in a nearly 10% performance improvement in
     // fill* functions
-    // register uint8_t mask = ~(0xFF >> (mod));
-    static uint8_t premask[8] = {0x00, 0x80, 0xC0, 0xE0, 0xF0, 0xF8, 0xFC, 0xFE };
     register uint8_t mask = premask[mod];
 
     // adjust the mask if we're not going to reach the end of this byte
     if (h < mod) {
-      mask &= (0xFF >> (mod-h));
+      mask &= (0xFF >> (mod - h));
     }
 
     switch (color)
@@ -527,7 +508,7 @@ static void _drawFastVLineInternal(int16_t x, int16_t __y, int16_t __h, uint16_t
 
         // adjust h & y (there's got to be a faster way for me to do this, but
         // this should still help a fair bit for now)
-        h -= 8;
+         h -= 8;
         y += 8;
       } while (h >= 8);
     } else {
@@ -553,8 +534,6 @@ static void _drawFastVLineInternal(int16_t x, int16_t __y, int16_t __h, uint16_t
     // register uint8_t mask = (1 << mod) - 1;
     // note - lookup table results in a nearly 10% performance improvement in
     // fill* functions
-    static uint8_t postmask[8] = {0x00, 0x01, 0x03, 0x07, 0x0F, 0x1F, 0x3F,
-                                  0x7F};
     register uint8_t mask = postmask[mod];
 
     switch (color)
@@ -576,8 +555,8 @@ static void _drawFastVLineInternal(int16_t x, int16_t __y, int16_t __h, uint16_t
 
 
 // Draw a circle outline
-void SSD1306_drawCircle(int16_t x0, int16_t y0, int16_t r,
- uint16_t color) {
+void SSD1306_drawCircle(int16_t x0, int16_t y0, int16_t r, uint16_t color) 
+{
   int16_t f = 1 - r;
   int16_t ddF_x = 1;
   int16_t ddF_y = -2 * r;
@@ -618,7 +597,7 @@ void SSD1306_drawCircleHelper( int16_t x0, int16_t y0,
   int16_t x     = 0;
   int16_t y     = r;
 
-  while (x<y) {
+  while (x < y) {
     if (f >= 0) {
       y--;
       ddF_y += 2;
@@ -710,7 +689,7 @@ void SSD1306_drawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1,
     ystep = -1;
   }
 
-  for (; x0<=x1; x0++) {
+  for (; x0 <= x1; x0++) {
     if (steep) {
       SSD1306_drawPixel(y0, x0, color);
     } else {
@@ -736,7 +715,7 @@ void SSD1306_drawRect(int16_t x, int16_t y, int16_t w, int16_t h,
 void SSD1306_fillRect(int16_t x, int16_t y, int16_t w, int16_t h,
  uint16_t color) {
   // Update in subclasses if desired!
-  for (int16_t i=x; i<x+w; i++) {
+  for (int16_t i = x; i < x + w; i++) {
     SSD1306_drawFastVLine(i, y, h, color);
   }
 }
@@ -788,7 +767,7 @@ void SSD1306_fillTriangle(int16_t x0, int16_t y0,
   // Sort coordinates by Y order (y2 >= y1 >= y0)
   if (y0 > y1) {
     _swap_int16(y0, y1); _swap_int16(x0, x1);
-  }
+  } 
   if (y1 > y2) {
     _swap_int16(y2, y1); _swap_int16(x2, x1);
   }

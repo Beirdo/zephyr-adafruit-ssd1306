@@ -109,24 +109,18 @@ typedef enum {
     TOGGLE_BITS,
 } oper_t;
 
-int SSD1306_initialize(uint8_t vccstate);
-void SSD1306_setVccstate(uint8_t vccstate);
+int SSD1306_initialize(void);
 void SSD1306_reset(void);
 
-void SSD1306_displayOff(void);
-void SSD1306_displayOn(void);
 void SSD1306_clearDisplay(void);
-void SSD1306_invertDisplay(uint8_t i);
-void SSD1306_display();
+int SSD1306_display();
 
-void SSD1306_startScrollRight(uint8_t start, uint8_t stop);
-void SSD1306_startScrollLeft(uint8_t start, uint8_t stop);
+int SSD1306_startScrollRight(uint8_t start, uint8_t stop);
+int SSD1306_startScrollLeft(uint8_t start, uint8_t stop);
 
-void SSD1306_startScrollDiagRight(uint8_t start, uint8_t stop);
-void SSD1306_startScrollDiagLeft(uint8_t start, uint8_t stop);
-void SSD1306_stopScroll(void);
-
-void SSD1306_dim(bool dim);
+int SSD1306_startScrollDiagRight(uint8_t start, uint8_t stop);
+int SSD1306_startScrollDiagLeft(uint8_t start, uint8_t stop);
+int SSD1306_stopScroll(void);
 
 void SSD1306_drawPixel(int16_t x, int16_t y, uint16_t color);
 

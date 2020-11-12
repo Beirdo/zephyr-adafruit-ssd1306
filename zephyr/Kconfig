@@ -3,7 +3,6 @@
 
 config ADAFRUIT_SSD1306
 	bool "Adafruit SSD1306 Library Support"
-	depends on I2C
 	depends on SSD1306
 	help
 	  This option enables the ported Adafruit_GFX and Adafruit_SSD1306 library.
