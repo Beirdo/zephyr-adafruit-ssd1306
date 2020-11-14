@@ -48,75 +48,72 @@ All text above, and the splash screen must be included in any redistribution
 #include "adafruit-gfx-font.h"
 
 
-int SSD1306_initialize(void);
-void SSD1306_reset(void);
+int adafruit_gfx_initialize(void);
+void adafruit_gfx_reset(void);
 
-void SSD1306_clearDisplay(void);
-int SSD1306_display();
+void adafruit_gfx_clearDisplay(void);
+int adafruit_gfx_display();
 
-int SSD1306_startScrollRight(uint8_t start, uint8_t stop);
-int SSD1306_startScrollLeft(uint8_t start, uint8_t stop);
+int adafruit_gfx_startScrollRight(uint8_t start, uint8_t stop);
+int adafruit_gfx_startScrollLeft(uint8_t start, uint8_t stop);
 
-int SSD1306_startScrollDiagRight(uint8_t start, uint8_t stop);
-int SSD1306_startScrollDiagLeft(uint8_t start, uint8_t stop);
-int SSD1306_stopScroll(void);
+int adafruit_gfx_startScrollDiagRight(uint8_t start, uint8_t stop);
+int adafruit_gfx_startScrollDiagLeft(uint8_t start, uint8_t stop);
+int adafruit_gfx_stopScroll(void);
 
-void SSD1306_drawPixel(int16_t x, int16_t y, uint16_t color);
+void adafruit_gfx_drawPixel(int16_t x, int16_t y, uint16_t color);
 
-void SSD1306_drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t color);
-void SSD1306_drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color);
+void adafruit_gfx_drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t color);
+void adafruit_gfx_drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color);
 
 extern const uint8_t adafruit_logo[SSD1306_RAM_MIRROR_SIZE];
 extern const uint8_t adafruit_gfx_default_font[];
 
-// And now for the parts from the old base class.  Note: these have all been
-// renamed to being SSD1306, but originally were from Adafruit_GFX class
+void adafruit_gfx_drawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t color);
+void adafruit_gfx_drawRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color);
+void adafruit_gfx_fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color);
+void adafruit_gfx_fillScreen(uint16_t color);
 
-void SSD1306_drawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t color);
-void SSD1306_drawRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color);
-void SSD1306_fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color);
-void SSD1306_fillScreen(uint16_t color);
-
-void SSD1306_drawCircle(int16_t x0, int16_t y0, int16_t r, uint16_t color);
-void SSD1306_drawCircleHelper(int16_t x0, int16_t y0, int16_t r,
+void adafruit_gfx_drawCircle(int16_t x0, int16_t y0, int16_t r, uint16_t color);
+void adafruit_gfx_drawCircleHelper(int16_t x0, int16_t y0, int16_t r,
       uint8_t cornername, uint16_t color);
 
-void SSD1306_fillCircle(int16_t x0, int16_t y0, int16_t r, uint16_t color);
-void SSD1306_fillCircleHelper(int16_t x0, int16_t y0, int16_t r, uint8_t cornername,
+void adafruit_gfx_fillCircle(int16_t x0, int16_t y0, int16_t r, uint16_t color);
+void adafruit_gfx_fillCircleHelper(int16_t x0, int16_t y0, int16_t r, uint8_t cornername,
       int16_t delta, uint16_t color);
-void SSD1306_drawTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1,
+void adafruit_gfx_drawTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1,
       int16_t x2, int16_t y2, uint16_t color);
-void SSD1306_fillTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1,
+void adafruit_gfx_fillTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1,
       int16_t x2, int16_t y2, uint16_t color);
-void SSD1306_drawRoundRect(int16_t x0, int16_t y0, int16_t w, int16_t h,
+void adafruit_gfx_drawRoundRect(int16_t x0, int16_t y0, int16_t w, int16_t h,
       int16_t radius, uint16_t color);
-void SSD1306_fillRoundRect(int16_t x0, int16_t y0, int16_t w, int16_t h,
+void adafruit_gfx_fillRoundRect(int16_t x0, int16_t y0, int16_t w, int16_t h,
       int16_t radius, uint16_t color);
-void SSD1306_drawBitmap(int16_t x, int16_t y, uint8_t *bitmap,
+void adafruit_gfx_drawBitmap(int16_t x, int16_t y, uint8_t *bitmap,
       int16_t w, int16_t h, uint16_t color, uint16_t bg);
-void SSD1306_drawXBitmap(int16_t x, int16_t y, const uint8_t *bitmap,
+void adafruit_gfx_drawXBitmap(int16_t x, int16_t y, const uint8_t *bitmap,
       int16_t w, int16_t h, uint16_t color);
-void SSD1306_drawChar(int16_t x, int16_t y, unsigned char c, uint16_t color,
+void adafruit_gfx_drawChar(int16_t x, int16_t y, unsigned char c, uint16_t color,
       uint16_t bg, uint8_t size);
-void SSD1306_setCursor(int16_t x, int16_t y);
-void SSD1306_setTextColor(uint16_t c, uint16_t bg);
-void SSD1306_setTextSize(uint8_t s);
-void SSD1306_setTextWrap(bool w);
-void SSD1306_setRotation(uint8_t r);
-void SSD1306_cp437(bool x);
-void SSD1306_setFont(const GFXfont *f);
-void SSD1306_getTextBounds(char *string, int16_t x, int16_t y,
+void adafruit_gfx_setCursor(int16_t x, int16_t y);
+void adafruit_gfx_setTextColor(uint16_t c, uint16_t bg);
+void adafruit_gfx_setTextSize(uint8_t s);
+void adafruit_gfx_setTextWrap(bool w);
+void adafruit_gfx_setRotation(uint8_t r);
+void adafruit_gfx_cp437(bool x);
+void adafruit_gfx_setFont(const GFXfont *f);
+void adafruit_gfx_getTextBounds(char *string, int16_t x, int16_t y,
       int16_t *x1, int16_t *y1, uint16_t *w, uint16_t *h);
 
-size_t SSD1306_write(uint8_t);
+size_t adafruit_gfx_write(uint8_t);
 
-int16_t SSD1306_height(void);
-int16_t SSD1306_width(void);
+int16_t adafruit_gfx_height(void);
+int16_t adafruit_gfx_width(void);
 
-uint8_t SSD1306_getRotation(void);
+uint8_t adafruit_gfx_getRotation(void);
 
 // get current cursor position (get rotation safe maximum values, using: width() for x, height() for y)
-int16_t SSD1306_getCursorX(void);
-int16_t SSD1306_getCursorY(void);
+int16_t adafruit_gfx_getCursorX(void);
+int16_t adafruit_gfx_getCursorY(void);
 
 #endif /* __adafruit_gfx_api_h_ */

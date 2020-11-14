@@ -85,7 +85,7 @@ static struct adafruit_ssd1306_data_t display_data = {
   .gfxFont = NULL,
 };
 
-int SSD1306_initialize(void) {
+int adafruit_gfx_initialize(void) {
   int ret = 0;
   
   display_data.dev = device_get_binding(DT_LABEL(DT_INST(0, solomon_ssd1306fb)));
@@ -113,12 +113,12 @@ int SSD1306_initialize(void) {
     return ret;
   }
   
-  SSD1306_reset();
+  adafruit_gfx_reset();
   return 0;
 }
 
-void SSD1306_reset(void) {
-  SSD1306_clearDisplay();
+void adafruit_gfx_reset(void) {
+  adafruit_gfx_clearDisplay();
   display_data.show_logo = true;
 }
 
@@ -127,7 +127,7 @@ void SSD1306_reset(void) {
 // Activate a right handed scroll for rows start through stop
 // Hint, the display is 16 rows tall. To scroll the whole display, run:
 // display.scrollright(0x00, 0x0F)
-int SSD1306_startScrollRight(uint8_t start, uint8_t stop)
+int adafruit_gfx_startScrollRight(uint8_t start, uint8_t stop)
 {
   uint8_t *buf = display_data.buffer;
   size_t buflen = 0;
@@ -148,7 +148,7 @@ int SSD1306_startScrollRight(uint8_t start, uint8_t stop)
 // Activate a right handed scroll for rows start through stop
 // Hint, the display is 16 rows tall. To scroll the whole display, run:
 // display.scrollright(0x00, 0x0F)
-int SSD1306_startScrollLeft(uint8_t start, uint8_t stop)
+int adafruit_gfx_startScrollLeft(uint8_t start, uint8_t stop)
 {
   uint8_t *buf = display_data.buffer;
   size_t buflen = 0;
@@ -169,7 +169,7 @@ int SSD1306_startScrollLeft(uint8_t start, uint8_t stop)
 // Activate a diagonal scroll for rows start through stop
 // Hint, the display is 16 rows tall. To scroll the whole display, run:
 // display.scrollright(0x00, 0x0F)
-int SSD1306_startScrollDiagRight(uint8_t start, uint8_t stop)
+int adafruit_gfx_startScrollDiagRight(uint8_t start, uint8_t stop)
 {
   uint8_t *buf = display_data.buffer;
   size_t buflen = 0;
@@ -192,7 +192,7 @@ int SSD1306_startScrollDiagRight(uint8_t start, uint8_t stop)
 // Activate a diagonal scroll for rows start through stop
 // Hint, the display is 16 rows tall. To scroll the whole display, run:
 // display.scrollright(0x00, 0x0F)
-int SSD1306_startScrollDiagLeft(uint8_t start, uint8_t stop)
+int adafruit_gfx_startScrollDiagLeft(uint8_t start, uint8_t stop)
 {
   uint8_t *buf = display_data.buffer;
   size_t buflen = 0;
@@ -211,7 +211,7 @@ int SSD1306_startScrollDiagLeft(uint8_t start, uint8_t stop)
   return ssd1306_display_write(display_data.dev, buf, buflen, true);
 }
 
-int SSD1306_stopScroll(void)
+int adafruit_gfx_stopScroll(void)
 {
   uint8_t *buf = display_data.buffer;
   size_t buflen = 0;
@@ -221,7 +221,7 @@ int SSD1306_stopScroll(void)
   return ssd1306_display_write(display_data.dev, buf, buflen, true);
 }
 
-int SSD1306_display(void) 
+int adafruit_gfx_display(void) 
 {
   uint8_t *buf = display_data.buffer;
   size_t buflen = 0;
@@ -257,20 +257,20 @@ int SSD1306_display(void)
   }
 
   if (display_data.show_logo) {
-    SSD1306_clearDisplay();
+    adafruit_gfx_clearDisplay();
   }
   
   return 0;
 }
 
 // clear everything
-void SSD1306_clearDisplay(void) {
+void adafruit_gfx_clearDisplay(void) {
   display_data.show_logo = false;
   adafruit_gfx_cache_clear_all(&display_data.draw_cache);
 }
 
 // the most basic function, set a single pixel
-void SSD1306_drawPixel(int16_t x, int16_t y, uint16_t color)
+void adafruit_gfx_drawPixel(int16_t x, int16_t y, uint16_t color)
 {
   if ((x < 0) || (x >= display_data.width) || (y < 0) || (y >= display_data.height))
     return;
@@ -311,7 +311,7 @@ void SSD1306_drawPixel(int16_t x, int16_t y, uint16_t color)
 }
 
 
-void SSD1306_drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color) 
+void adafruit_gfx_drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color) 
 {
   int bSwap = 0;
   switch(display_data.rotation) {
@@ -388,7 +388,7 @@ static void _drawFastHLineInternal(int16_t x, int16_t y, int16_t w, uint16_t col
   }
 }
 
-void SSD1306_drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t color) {
+void adafruit_gfx_drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t color) {
   int bSwap = 0;
   switch(display_data.rotation) {
     case 0:
@@ -556,7 +556,7 @@ static void _drawFastVLineInternal(int16_t x, int16_t y, int16_t h, uint16_t col
 
 
 // Draw a circle outline
-void SSD1306_drawCircle(int16_t x0, int16_t y0, int16_t r, uint16_t color) 
+void adafruit_gfx_drawCircle(int16_t x0, int16_t y0, int16_t r, uint16_t color) 
 {
   int16_t f = 1 - r;
   int16_t ddF_x = 1;
@@ -564,10 +564,10 @@ void SSD1306_drawCircle(int16_t x0, int16_t y0, int16_t r, uint16_t color)
   int16_t x = 0;
   int16_t y = r;
 
-  SSD1306_drawPixel(x0  , y0+r, color);
-  SSD1306_drawPixel(x0  , y0-r, color);
-  SSD1306_drawPixel(x0+r, y0  , color);
-  SSD1306_drawPixel(x0-r, y0  , color);
+  adafruit_gfx_drawPixel(x0  , y0+r, color);
+  adafruit_gfx_drawPixel(x0  , y0-r, color);
+  adafruit_gfx_drawPixel(x0+r, y0  , color);
+  adafruit_gfx_drawPixel(x0-r, y0  , color);
 
   while (x<y) {
     if (f >= 0) {
@@ -579,18 +579,18 @@ void SSD1306_drawCircle(int16_t x0, int16_t y0, int16_t r, uint16_t color)
     ddF_x += 2;
     f += ddF_x;
 
-    SSD1306_drawPixel(x0 + x, y0 + y, color);
-    SSD1306_drawPixel(x0 - x, y0 + y, color);
-    SSD1306_drawPixel(x0 + x, y0 - y, color);
-    SSD1306_drawPixel(x0 - x, y0 - y, color);
-    SSD1306_drawPixel(x0 + y, y0 + x, color);
-    SSD1306_drawPixel(x0 - y, y0 + x, color);
-    SSD1306_drawPixel(x0 + y, y0 - x, color);
-    SSD1306_drawPixel(x0 - y, y0 - x, color);
+    adafruit_gfx_drawPixel(x0 + x, y0 + y, color);
+    adafruit_gfx_drawPixel(x0 - x, y0 + y, color);
+    adafruit_gfx_drawPixel(x0 + x, y0 - y, color);
+    adafruit_gfx_drawPixel(x0 - x, y0 - y, color);
+    adafruit_gfx_drawPixel(x0 + y, y0 + x, color);
+    adafruit_gfx_drawPixel(x0 - y, y0 + x, color);
+    adafruit_gfx_drawPixel(x0 + y, y0 - x, color);
+    adafruit_gfx_drawPixel(x0 - y, y0 - x, color);
   }
 }
 
-void SSD1306_drawCircleHelper( int16_t x0, int16_t y0,
+void adafruit_gfx_drawCircleHelper( int16_t x0, int16_t y0,
  int16_t r, uint8_t cornername, uint16_t color) {
   int16_t f     = 1 - r;
   int16_t ddF_x = 1;
@@ -608,32 +608,32 @@ void SSD1306_drawCircleHelper( int16_t x0, int16_t y0,
     ddF_x += 2;
     f     += ddF_x;
     if (cornername & 0x4) {
-      SSD1306_drawPixel(x0 + x, y0 + y, color);
-      SSD1306_drawPixel(x0 + y, y0 + x, color);
+      adafruit_gfx_drawPixel(x0 + x, y0 + y, color);
+      adafruit_gfx_drawPixel(x0 + y, y0 + x, color);
     }
     if (cornername & 0x2) {
-      SSD1306_drawPixel(x0 + x, y0 - y, color);
-      SSD1306_drawPixel(x0 + y, y0 - x, color);
+      adafruit_gfx_drawPixel(x0 + x, y0 - y, color);
+      adafruit_gfx_drawPixel(x0 + y, y0 - x, color);
     }
     if (cornername & 0x8) {
-      SSD1306_drawPixel(x0 - y, y0 + x, color);
-      SSD1306_drawPixel(x0 - x, y0 + y, color);
+      adafruit_gfx_drawPixel(x0 - y, y0 + x, color);
+      adafruit_gfx_drawPixel(x0 - x, y0 + y, color);
     }
     if (cornername & 0x1) {
-      SSD1306_drawPixel(x0 - y, y0 - x, color);
-      SSD1306_drawPixel(x0 - x, y0 - y, color);
+      adafruit_gfx_drawPixel(x0 - y, y0 - x, color);
+      adafruit_gfx_drawPixel(x0 - x, y0 - y, color);
     }
   }
 }
 
-void SSD1306_fillCircle(int16_t x0, int16_t y0, int16_t r,
+void adafruit_gfx_fillCircle(int16_t x0, int16_t y0, int16_t r,
  uint16_t color) {
-  SSD1306_drawFastVLine(x0, y0-r, 2*r+1, color);
-  SSD1306_fillCircleHelper(x0, y0, r, 3, 0, color);
+  adafruit_gfx_drawFastVLine(x0, y0-r, 2*r+1, color);
+  adafruit_gfx_fillCircleHelper(x0, y0, r, 3, 0, color);
 }
 
 // Used to do circles and roundrects
-void SSD1306_fillCircleHelper(int16_t x0, int16_t y0, int16_t r,
+void adafruit_gfx_fillCircleHelper(int16_t x0, int16_t y0, int16_t r,
  uint8_t cornername, int16_t delta, uint16_t color) {
 
   int16_t f     = 1 - r;
@@ -653,18 +653,18 @@ void SSD1306_fillCircleHelper(int16_t x0, int16_t y0, int16_t r,
     f     += ddF_x;
 
     if (cornername & 0x1) {
-      SSD1306_drawFastVLine(x0+x, y0-y, 2*y+1+delta, color);
-      SSD1306_drawFastVLine(x0+y, y0-x, 2*x+1+delta, color);
+      adafruit_gfx_drawFastVLine(x0+x, y0-y, 2*y+1+delta, color);
+      adafruit_gfx_drawFastVLine(x0+y, y0-x, 2*x+1+delta, color);
     }
     if (cornername & 0x2) {
-      SSD1306_drawFastVLine(x0-x, y0-y, 2*y+1+delta, color);
-      SSD1306_drawFastVLine(x0-y, y0-x, 2*x+1+delta, color);
+      adafruit_gfx_drawFastVLine(x0-x, y0-y, 2*y+1+delta, color);
+      adafruit_gfx_drawFastVLine(x0-y, y0-x, 2*x+1+delta, color);
     }
   }
 }
 
 // Bresenham's algorithm - thx wikpedia
-void SSD1306_drawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1,
+void adafruit_gfx_drawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1,
  uint16_t color) {
   int16_t steep = _abs(y1 - y0) > _abs(x1 - x0);
   if (steep) {
@@ -692,9 +692,9 @@ void SSD1306_drawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1,
 
   for (; x0 <= x1; x0++) {
     if (steep) {
-      SSD1306_drawPixel(y0, x0, color);
+      adafruit_gfx_drawPixel(y0, x0, color);
     } else {
-      SSD1306_drawPixel(x0, y0, color);
+      adafruit_gfx_drawPixel(x0, y0, color);
     }
     err -= dy;
     if (err < 0) {
@@ -705,62 +705,62 @@ void SSD1306_drawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1,
 }
 
 // Draw a rectangle
-void SSD1306_drawRect(int16_t x, int16_t y, int16_t w, int16_t h,
+void adafruit_gfx_drawRect(int16_t x, int16_t y, int16_t w, int16_t h,
  uint16_t color) {
-  SSD1306_drawFastHLine(x, y, w, color);
-  SSD1306_drawFastHLine(x, y+h-1, w, color);
-  SSD1306_drawFastVLine(x, y, h, color);
-  SSD1306_drawFastVLine(x+w-1, y, h, color);
+  adafruit_gfx_drawFastHLine(x, y, w, color);
+  adafruit_gfx_drawFastHLine(x, y+h-1, w, color);
+  adafruit_gfx_drawFastVLine(x, y, h, color);
+  adafruit_gfx_drawFastVLine(x+w-1, y, h, color);
 }
 
-void SSD1306_fillRect(int16_t x, int16_t y, int16_t w, int16_t h,
+void adafruit_gfx_fillRect(int16_t x, int16_t y, int16_t w, int16_t h,
  uint16_t color) {
   // Update in subclasses if desired!
   for (int16_t i = x; i < x + w; i++) {
-    SSD1306_drawFastVLine(i, y, h, color);
+    adafruit_gfx_drawFastVLine(i, y, h, color);
   }
 }
 
-void SSD1306_fillScreen(uint16_t color) {
-  SSD1306_fillRect(0, 0, display_data.width, display_data.height, color);
+void adafruit_gfx_fillScreen(uint16_t color) {
+  adafruit_gfx_fillRect(0, 0, display_data.width, display_data.height, color);
 }
 
 // Draw a rounded rectangle
-void SSD1306_drawRoundRect(int16_t x, int16_t y, int16_t w,
+void adafruit_gfx_drawRoundRect(int16_t x, int16_t y, int16_t w,
  int16_t h, int16_t r, uint16_t color) {
   // smarter version
-  SSD1306_drawFastHLine(x+r  , y    , w-2*r, color); // Top
-  SSD1306_drawFastHLine(x+r  , y+h-1, w-2*r, color); // Bottom
-  SSD1306_drawFastVLine(x    , y+r  , h-2*r, color); // Left
-  SSD1306_drawFastVLine(x+w-1, y+r  , h-2*r, color); // Right
+  adafruit_gfx_drawFastHLine(x+r  , y    , w-2*r, color); // Top
+  adafruit_gfx_drawFastHLine(x+r  , y+h-1, w-2*r, color); // Bottom
+  adafruit_gfx_drawFastVLine(x    , y+r  , h-2*r, color); // Left
+  adafruit_gfx_drawFastVLine(x+w-1, y+r  , h-2*r, color); // Right
   // draw four corners
-  SSD1306_drawCircleHelper(x+r    , y+r    , r, 1, color);
-  SSD1306_drawCircleHelper(x+w-r-1, y+r    , r, 2, color);
-  SSD1306_drawCircleHelper(x+w-r-1, y+h-r-1, r, 4, color);
-  SSD1306_drawCircleHelper(x+r    , y+h-r-1, r, 8, color);
+  adafruit_gfx_drawCircleHelper(x+r    , y+r    , r, 1, color);
+  adafruit_gfx_drawCircleHelper(x+w-r-1, y+r    , r, 2, color);
+  adafruit_gfx_drawCircleHelper(x+w-r-1, y+h-r-1, r, 4, color);
+  adafruit_gfx_drawCircleHelper(x+r    , y+h-r-1, r, 8, color);
 }
 
 // Fill a rounded rectangle
-void SSD1306_fillRoundRect(int16_t x, int16_t y, int16_t w,
+void adafruit_gfx_fillRoundRect(int16_t x, int16_t y, int16_t w,
  int16_t h, int16_t r, uint16_t color) {
   // smarter version
-  SSD1306_fillRect(x+r, y, w-2*r, h, color);
+  adafruit_gfx_fillRect(x+r, y, w-2*r, h, color);
 
   // draw four corners
-  SSD1306_fillCircleHelper(x+w-r-1, y+r, r, 1, h-2*r-1, color);
-  SSD1306_fillCircleHelper(x+r    , y+r, r, 2, h-2*r-1, color);
+  adafruit_gfx_fillCircleHelper(x+w-r-1, y+r, r, 1, h-2*r-1, color);
+  adafruit_gfx_fillCircleHelper(x+r    , y+r, r, 2, h-2*r-1, color);
 }
 
 // Draw a triangle
-void SSD1306_drawTriangle(int16_t x0, int16_t y0,
+void adafruit_gfx_drawTriangle(int16_t x0, int16_t y0,
  int16_t x1, int16_t y1, int16_t x2, int16_t y2, uint16_t color) {
-  SSD1306_drawLine(x0, y0, x1, y1, color);
-  SSD1306_drawLine(x1, y1, x2, y2, color);
-  SSD1306_drawLine(x2, y2, x0, y0, color);
+  adafruit_gfx_drawLine(x0, y0, x1, y1, color);
+  adafruit_gfx_drawLine(x1, y1, x2, y2, color);
+  adafruit_gfx_drawLine(x2, y2, x0, y0, color);
 }
 
 // Fill a triangle
-void SSD1306_fillTriangle(int16_t x0, int16_t y0,
+void adafruit_gfx_fillTriangle(int16_t x0, int16_t y0,
  int16_t x1, int16_t y1, int16_t x2, int16_t y2, uint16_t color) {
 
   int16_t a, b, y, last;
@@ -782,7 +782,7 @@ void SSD1306_fillTriangle(int16_t x0, int16_t y0,
     else if(x1 > b) b = x1;
     if(x2 < a)      a = x2;
     else if(x2 > b) b = x2;
-    SSD1306_drawFastHLine(a, y0, b-a+1, color);
+    adafruit_gfx_drawFastHLine(a, y0, b-a+1, color);
     return;
   }
 
@@ -816,7 +816,7 @@ void SSD1306_fillTriangle(int16_t x0, int16_t y0,
     b = x0 + (x2 - x0) * (y - y0) / (y2 - y0);
     */
     if(a > b) _swap_int16(a,b);
-    SSD1306_drawFastHLine(a, y, b-a+1, color);
+    adafruit_gfx_drawFastHLine(a, y, b-a+1, color);
   }
 
   // For lower part of triangle, find scanline crossings for segments
@@ -833,7 +833,7 @@ void SSD1306_fillTriangle(int16_t x0, int16_t y0,
     b = x0 + (x2 - x0) * (y - y0) / (y2 - y0);
     */
     if(a > b) _swap_int16(a,b);
-    SSD1306_drawFastHLine(a, y, b-a+1, color);
+    adafruit_gfx_drawFastHLine(a, y, b-a+1, color);
   }
 }
 
@@ -841,7 +841,7 @@ void SSD1306_fillTriangle(int16_t x0, int16_t y0,
 // provided bitmap buffer using the specified foreground (for set bits)
 // and background (for clear bits) colors.
 // If foreground and background are the same, unset bits are transparent
-void SSD1306_drawBitmap(int16_t x, int16_t y, uint8_t *bitmap,
+void adafruit_gfx_drawBitmap(int16_t x, int16_t y, uint8_t *bitmap,
       int16_t w, int16_t h, uint16_t color, uint16_t bg) {
 
   int16_t i, j, byteWidth = (w + 7) / 8;
@@ -851,8 +851,8 @@ void SSD1306_drawBitmap(int16_t x, int16_t y, uint8_t *bitmap,
     for(i=0; i<w; i++ ) {
       if(i & 7) byte <<= 1;
       else      byte   = bitmap[j * byteWidth + i / 8];
-      if(byte & 0x80) SSD1306_drawPixel(x+i, y+j, color);
-      else if(color != bg) SSD1306_drawPixel(x+i, y+j, bg);
+      if(byte & 0x80) adafruit_gfx_drawPixel(x+i, y+j, color);
+      else if(color != bg) adafruit_gfx_drawPixel(x+i, y+j, bg);
     }
   }
 }
@@ -860,7 +860,7 @@ void SSD1306_drawBitmap(int16_t x, int16_t y, uint8_t *bitmap,
 //Draw XBitMap Files (*.xbm), exported from GIMP,
 //Usage: Export from GIMP to *.xbm, rename *.xbm to *.c and open in editor.
 //C Array can be directly used with this function
-void SSD1306_drawXBitmap(int16_t x, int16_t y,
+void adafruit_gfx_drawXBitmap(int16_t x, int16_t y,
  const uint8_t *bitmap, int16_t w, int16_t h, uint16_t color) {
 
   int16_t i, j, byteWidth = (w + 7) / 8;
@@ -870,12 +870,12 @@ void SSD1306_drawXBitmap(int16_t x, int16_t y,
     for(i=0; i<w; i++ ) {
       if(i & 7) byte >>= 1;
       else      byte   = bitmap[j * byteWidth + i / 8];
-      if(byte & 0x01) SSD1306_drawPixel(x+i, y+j, color);
+      if(byte & 0x01) adafruit_gfx_drawPixel(x+i, y+j, color);
     }
   }
 }
 
-size_t SSD1306_write(uint8_t c) {
+size_t adafruit_gfx_write(uint8_t c) {
   if(!display_data.gfxFont) { // 'Classic' built-in font
 
     if(c == '\n') {
@@ -888,7 +888,7 @@ size_t SSD1306_write(uint8_t c) {
         display_data.cursor_x  = 0;            // Reset x to zero
         display_data.cursor_y += display_data.textsize * 8; // Advance y one line
       }
-      SSD1306_drawChar(display_data.cursor_x, display_data.cursor_y, c, display_data.textcolor, display_data.textbgcolor, display_data.textsize);
+      adafruit_gfx_drawChar(display_data.cursor_x, display_data.cursor_y, c, display_data.textcolor, display_data.textbgcolor, display_data.textsize);
       display_data.cursor_x += display_data.textsize * 6;
     }
 
@@ -911,7 +911,7 @@ size_t SSD1306_write(uint8_t c) {
             display_data.cursor_x  = 0;
             display_data.cursor_y += (int16_t)display_data.textsize * display_data.gfxFont->yAdvance;
           }
-          SSD1306_drawChar(display_data.cursor_x, display_data.cursor_y, c, display_data.textcolor, display_data.textbgcolor, display_data.textsize);
+          adafruit_gfx_drawChar(display_data.cursor_x, display_data.cursor_y, c, display_data.textcolor, display_data.textbgcolor, display_data.textsize);
         }
         display_data.cursor_x += glyph->xAdvance * (int16_t)display_data.textsize;
       }
@@ -922,7 +922,7 @@ size_t SSD1306_write(uint8_t c) {
 }
 
 // Draw a character
-void SSD1306_drawChar(int16_t x, int16_t y, unsigned char c,
+void adafruit_gfx_drawChar(int16_t x, int16_t y, unsigned char c,
  uint16_t color, uint16_t bg, uint8_t size) {
 
   if(!display_data.gfxFont) { // 'Classic' built-in font
@@ -941,11 +941,11 @@ void SSD1306_drawChar(int16_t x, int16_t y, unsigned char c,
       else      line = 0x0;
       for(int8_t j=0; j<8; j++, line >>= 1) {
         if(line & 0x1) {
-          if(size == 1) SSD1306_drawPixel(x+i, y+j, color);
-          else          SSD1306_fillRect(x+(i*size), y+(j*size), size, size, color);
+          if(size == 1) adafruit_gfx_drawPixel(x+i, y+j, color);
+          else          adafruit_gfx_fillRect(x+(i*size), y+(j*size), size, size, color);
         } else if(bg != color) {
-          if(size == 1) SSD1306_drawPixel(x+i, y+j, bg);
-          else          SSD1306_fillRect(x+i*size, y+j*size, size, size, bg);
+          if(size == 1) adafruit_gfx_drawPixel(x+i, y+j, bg);
+          else          adafruit_gfx_fillRect(x+i*size, y+j*size, size, size, bg);
         }
       }
     }
@@ -1000,9 +1000,9 @@ void SSD1306_drawChar(int16_t x, int16_t y, unsigned char c,
         }
         if(bits & 0x80) {
           if(size == 1) {
-            SSD1306_drawPixel(x+xo+xx, y+yo+yy, color);
+            adafruit_gfx_drawPixel(x+xo+xx, y+yo+yy, color);
           } else {
-            SSD1306_fillRect(x+(xo16+xx)*size, y+(yo16+yy)*size, size, size, color);
+            adafruit_gfx_fillRect(x+(xo16+xx)*size, y+(yo16+yy)*size, size, size, color);
           }
         }
         bits <<= 1;
@@ -1012,39 +1012,39 @@ void SSD1306_drawChar(int16_t x, int16_t y, unsigned char c,
   } // End classic vs custom font
 }
 
-void SSD1306_setCursor(int16_t x, int16_t y) {
+void adafruit_gfx_setCursor(int16_t x, int16_t y) {
   display_data.cursor_x = x;
   display_data.cursor_y = y;
 }
 
-int16_t SSD1306_getCursorX(void) {
+int16_t adafruit_gfx_getCursorX(void) {
   return display_data.cursor_x;
 }
 
-int16_t SSD1306_getCursorY(void) {
+int16_t adafruit_gfx_getCursorY(void) {
   return display_data.cursor_y;
 }
 
-void SSD1306_setTextSize(uint8_t s) {
+void adafruit_gfx_setTextSize(uint8_t s) {
   display_data.textsize = (s > 0) ? s : 1;
 }
 
-void SSD1306_setTextColor(uint16_t c, uint16_t b) {
+void adafruit_gfx_setTextColor(uint16_t c, uint16_t b) {
   // For 'transparent' background, we'll set the bg
   // to the same as fg instead of using a flag
   display_data.textcolor   = c;
   display_data.textbgcolor = b;
 }
 
-void SSD1306_setTextWrap(bool w) {
+void adafruit_gfx_setTextWrap(bool w) {
   display_data.wrap = w;
 }
 
-uint8_t SSD1306_getRotation(void) {
+uint8_t adafruit_gfx_getRotation(void) {
   return display_data.rotation;
 }
 
-void SSD1306_setRotation(uint8_t x) {
+void adafruit_gfx_setRotation(uint8_t x) {
   display_data.rotation = (x & 3);
   switch(display_data.rotation) {
    case 0:
@@ -1067,11 +1067,11 @@ void SSD1306_setRotation(uint8_t x) {
 // with the erroneous character indices.  By default, the library uses the
 // original 'wrong' behavior and old sketches will still work.  Pass 'true'
 // to this function to use correct CP437 character values in your code.
-void SSD1306_cp437(bool x) {
+void adafruit_gfx_cp437(bool x) {
   display_data.cp437 = x;
 }
 
-void SSD1306_setFont(const GFXfont *f) {
+void adafruit_gfx_setFont(const GFXfont *f) {
   if(f) {          // Font struct pointer passed in?
     if(!display_data.gfxFont) { // And no current font struct?
       // Switching from classic to new font behavior.
@@ -1087,7 +1087,7 @@ void SSD1306_setFont(const GFXfont *f) {
 }
 
 // Pass string and a cursor position, returns UL corner and W,H.
-void SSD1306_getTextBounds(char *str, int16_t x, int16_t y,
+void adafruit_gfx_getTextBounds(char *str, int16_t x, int16_t y,
  int16_t *x1, int16_t *y1, uint16_t *w, uint16_t *h) {
   uint8_t c; // Current character
 
@@ -1177,11 +1177,11 @@ void SSD1306_getTextBounds(char *str, int16_t x, int16_t y,
 }
 
 // Return the size of the display (per current rotation)
-int16_t SSD1306_width(void) {
+int16_t adafruit_gfx_width(void) {
   return display_data.width;
 }
 
-int16_t SSD1306_height(void) {
+int16_t adafruit_gfx_height(void) {
   return display_data.height;
 }
 
