@@ -41,20 +41,20 @@ LOG_MODULE_REGISTER(adafruit_ssd1306, CONFIG_DISPLAY_LOG_LEVEL);
 #include <device.h>
 #include <drivers/display.h>
 
-#include "adafruit-ssd1306.h"
+#include "adafruit-gfx-defines.h"
+#include "adafruit-gfx-cache.h"
+#include "adafruit-gfx-api.h"
+#include "adafruit-gfx-font.h"
 #include "utils.h"
-
-#define draw_pixel(x, y) (cache_pixel(display_data.draw_cache, (x), (y)))
-#define cache_pixel(cache, x, y) ((cache)[SSD1306_PIXEL_ADDR((x), (y))])
 
 static void _drawFastVLineInternal(int16_t x, int16_t y, int16_t h, uint16_t color);
 static void _drawFastHLineInternal(int16_t x, int16_t y, int16_t w, uint16_t color);
-static void _operCache(int16_t x, int16_t y, oper_t oper_, uint8_t mask);
 extern int ssd1306_display_write(const struct device *dev, uint8_t *buf, size_t len, bool command);
 
 struct adafruit_ssd1306_data_t {
   const struct device *dev;
-  uint8_t draw_cache[SSD1306_RAM_MIRROR_SIZE];
+  struct adafruit_gfx_cache_t draw_cache;
+  struct adafruit_gfx_cache_t adafruit_logo;
   uint8_t buffer[16];
   int16_t raw_width;	// Raw display, never changes
   int16_t raw_height;	// Raw display, never changes
@@ -86,6 +86,8 @@ static struct adafruit_ssd1306_data_t display_data = {
 };
 
 int SSD1306_initialize(void) {
+  int ret = 0;
+  
   display_data.dev = device_get_binding(DT_LABEL(DT_INST(0, solomon_ssd1306fb)));
 	if (display_data.dev == NULL) {
 		LOG_ERR("Failed to get pointer to %s device!",
@@ -100,6 +102,17 @@ int SSD1306_initialize(void) {
   display_data.width = display_data.raw_width;
   display_data.height = display_data.raw_height;
 
+  ret = adafruit_gfx_cache_init(&display_data.draw_cache, 0, NULL, 0);
+  if (ret != 0) {
+    return ret;
+  }
+  
+  ret = adafruit_gfx_cache_init(&display_data.adafruit_logo, SSD1306_RAM_MIRROR_SIZE, 
+                                adafruit_logo, SSD1306_RAM_MIRROR_SIZE);
+  if (ret != 0) {
+    return ret;
+  }
+  
   SSD1306_reset();
   return 0;
 }
@@ -109,27 +122,6 @@ void SSD1306_reset(void) {
   display_data.show_logo = true;
 }
 
-static void _operCache(int16_t x, int16_t y, oper_t oper_, uint8_t mask)
-{
-    uint8_t *addr = &draw_pixel(x, y);
-    uint8_t data = *addr;
-
-    switch (oper_) {
-        case SET_BITS:
-            data |= mask;
-            break;
-        case CLEAR_BITS:
-            data &= ~mask;
-            break;
-        case TOGGLE_BITS:
-            data ^= mask;
-            break;
-        default:
-            break;
-    }
-
-    *addr = data;
-}
 
 // startScrollRight
 // Activate a right handed scroll for rows start through stop
@@ -246,20 +238,21 @@ int SSD1306_display(void)
     return ret;
   }
 
-  uint8_t *cache = (display_data.show_logo ? (uint8_t *)lcd_logo : display_data.draw_cache);
+  struct adafruit_gfx_cache_t *cache = (display_data.show_logo ? &display_data.adafruit_logo : &display_data.draw_cache);
+  size_t line_addr;
+  for (line_addr = 0; line_addr < SSD1306_RAM_MIRROR_SIZE; line_addr += SSD1306_CACHE_LINE_SIZE) {
+    /*
+     * Send one cache row at a time.  This allows us to add support for external RAM
+     * with a minimal on-CPU cache.
+     */
+    ret = adafruit_gfx_cache_load_line(cache, line_addr, 0, NULL);
+    if (ret != 0) {
+      return ret;
+    }
 
-  for (int y = 0; y < SSD1306_LCDHEIGHT; y += 8) {
-    for (int x = 0; x < SSD1306_LCDWIDTH; x += 16) {
-      /*
-       * Send one cache row at a time.  This allows us to add support for external RAM
-       * with a minimal on-CPU cache.
-       *
-       * This will send a block of 16x8 pixels per iteration
-       */
-      ret = ssd1306_display_write(display_data.dev, &cache_pixel(cache, x, y), 16, false);
-      if (ret != 0) {
-        return ret;
-      }
+    ret = ssd1306_display_write(display_data.dev, cache->line, SSD1306_CACHE_LINE_SIZE, false);
+    if (ret != 0) {
+      return ret;
     }
   }
 
@@ -273,7 +266,7 @@ int SSD1306_display(void)
 // clear everything
 void SSD1306_clearDisplay(void) {
   display_data.show_logo = false;
-  memset(display_data.draw_cache, 0, SSD1306_RAM_MIRROR_SIZE);
+  adafruit_gfx_cache_clear_all(&display_data.draw_cache);
 }
 
 // the most basic function, set a single pixel
@@ -304,13 +297,13 @@ void SSD1306_drawPixel(int16_t x, int16_t y, uint16_t color)
   switch (color)
   {
     case WHITE:   
-      _operCache(x, y, SET_BITS, mask);  
+      adafruit_gfx_cache_operCache(&display_data.draw_cache, x, y, SET_BITS, mask);  
       break;
     case BLACK:   
-      _operCache(x, y, CLEAR_BITS, mask);  
+      adafruit_gfx_cache_operCache(&display_data.draw_cache, x, y, CLEAR_BITS, mask);  
       break;
     case INVERSE: 
-      _operCache(x, y, TOGGLE_BITS, mask);  
+      adafruit_gfx_cache_operCache(&display_data.draw_cache, x, y, TOGGLE_BITS, mask);  
       break;
     default:
       return;
@@ -381,13 +374,13 @@ static void _drawFastHLineInternal(int16_t x, int16_t y, int16_t w, uint16_t col
     switch (color)
     {
       case WHITE:
-        _operCache(i, y, SET_BITS, mask);
+        adafruit_gfx_cache_operCache(&display_data.draw_cache, i, y, SET_BITS, mask);
         break;
       case BLACK:
-        _operCache(i, y, CLEAR_BITS, mask);
+        adafruit_gfx_cache_operCache(&display_data.draw_cache, i, y, CLEAR_BITS, mask);
         break;
       case INVERSE:
-        _operCache(i, y, TOGGLE_BITS, mask);
+        adafruit_gfx_cache_operCache(&display_data.draw_cache, i, y, TOGGLE_BITS, mask);
         break;
       default:
         return;
@@ -435,6 +428,7 @@ static const uint8_t postmask[8] = { 0x00, 0x01, 0x03, 0x07, 0x0F, 0x1F, 0x3F, 0
 
 static void _drawFastVLineInternal(int16_t x, int16_t y, int16_t h, uint16_t color) 
 {
+  int ret = 0;
 
   // do nothing if we're off the left or right side of the screen
   if (x < 0 || x >= display_data.raw_width) {
@@ -477,13 +471,13 @@ static void _drawFastVLineInternal(int16_t x, int16_t y, int16_t h, uint16_t col
     switch (color)
     {
       case WHITE:
-        _operCache(x, y, SET_BITS, mask);
+        adafruit_gfx_cache_operCache(&display_data.draw_cache, x, y, SET_BITS, mask);
         break;
       case BLACK:
-        _operCache(x, y, CLEAR_BITS, mask);
+        adafruit_gfx_cache_operCache(&display_data.draw_cache, x, y, CLEAR_BITS, mask);
         break;
       case INVERSE:
-        _operCache(x, y, TOGGLE_BITS, mask);
+        adafruit_gfx_cache_operCache(&display_data.draw_cache, x, y, TOGGLE_BITS, mask);
         break;
       default:
         return;
@@ -504,7 +498,7 @@ static void _drawFastVLineInternal(int16_t x, int16_t y, int16_t h, uint16_t col
       // separate copy of the code so we don't impact performance of the
       // black/white write version with an extra comparison per loop
       do {
-        _operCache(x, y, TOGGLE_BITS, 0xFF);
+        adafruit_gfx_cache_operCache(&display_data.draw_cache, x, y, TOGGLE_BITS, 0xFF);
 
         // adjust h & y (there's got to be a faster way for me to do this, but
         // this should still help a fair bit for now)
@@ -514,9 +508,16 @@ static void _drawFastVLineInternal(int16_t x, int16_t y, int16_t h, uint16_t col
     } else {
       // store a local value to work with
       data = (color == WHITE) ? 0xFF : 0;
+      uint8_t *addr;
 
       do  {
-      	draw_pixel(x, y) = data;
+        ret = adafruit_gfx_cache_get_pixel_addr(&display_data.draw_cache, x, y, &addr);
+        if (ret != 0) {
+            return;
+        }
+    
+      	*addr = data;
+      	display_data.draw_cache.dirty = true;
 
         // adjust h & y (there's got to be a faster way for me to do this, but
         // this should still help a fair bit for now)
@@ -539,13 +540,13 @@ static void _drawFastVLineInternal(int16_t x, int16_t y, int16_t h, uint16_t col
     switch (color)
     {
       case WHITE:
-        _operCache(x, y, SET_BITS, mask);
+        adafruit_gfx_cache_operCache(&display_data.draw_cache, x, y, SET_BITS, mask);
         break;
       case BLACK:
-        _operCache(x, y, CLEAR_BITS, mask);
+        adafruit_gfx_cache_operCache(&display_data.draw_cache, x, y, CLEAR_BITS, mask);
         break;
       case INVERSE:
-        _operCache(x, y, TOGGLE_BITS, mask);
+        adafruit_gfx_cache_operCache(&display_data.draw_cache, x, y, TOGGLE_BITS, mask);
         break;
     }
   }
@@ -936,7 +937,7 @@ void SSD1306_drawChar(int16_t x, int16_t y, unsigned char c,
 
     for(int8_t i=0; i<6; i++ ) {
       uint8_t line;
-      if(i < 5) line = default_font[(c*5)+i];
+      if(i < 5) line = adafruit_gfx_default_font[(c*5)+i];
       else      line = 0x0;
       for(int8_t j=0; j<8; j++, line >>= 1) {
         if(line & 0x1) {

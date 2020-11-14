@@ -7,9 +7,10 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 zephyr_library()
 zephyr_library_sources(
-    ../src/adafruit-ssd1306.c
-    ../src/glcdfont.c
-    ../src/lcd_logo.c
+    ../src/adafruit-gfx-api.c
+    ../src/adafruit-gfx-font.c
+    ../src/adafruit-gfx-logo.c
+    ../src/adafruit-gfx-cache.c
 )
 
 endif()

@@ -6,3 +6,18 @@ config ADAFRUIT_SSD1306
 	depends on SSD1306
 	help
 	  This option enables the ported Adafruit_GFX and Adafruit_SSD1306 library.
+	  
+config ADAFRUIT_SSD1306_CACHE
+	bool "Enable off-SOC RAM cache for Adafruit SSD1306 Library"
+	depends on SSD1306
+	help
+	  This option enables the use of an off-SOC RAM cache for drawing
+	  NOTE: this RAM device must have a DT alias of "ssd1306_cache"
+	  
+config ADAFRUIT_SSD1306_CACHE_SIZE
+    int "Size of cache-line (in bytes)"
+    depends on ADAFRUIT_SSD1306_CACHE
+    help
+	  Number of bytes to use as a cache-line size 
+	  (must be <= width, and be an integer factor of width)
+    

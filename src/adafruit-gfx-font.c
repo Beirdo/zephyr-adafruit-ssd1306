@@ -5,11 +5,11 @@
 #define FONT5X7_H
 
 #include <zephyr.h>
-#include "adafruit-ssd1306.h"
+#include "adafruit-gfx-defines.h"
 
 // Standard ASCII 5x7 font
 
-const uint8_t default_font[] = {
+const uint8_t adafruit_gfx_default_font[] = {
 	0x00, 0x00, 0x00, 0x00, 0x00,
 	0x3E, 0x5B, 0x4F, 0x5B, 0x3E,
 	0x3E, 0x6B, 0x4F, 0x6B, 0x3E,

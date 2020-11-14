@@ -4,8 +4,15 @@
 // file and pass address of GFXfont struct to setFont().  Pass NULL to
 // revert to 'classic' fixed-space bitmap font.
 
-#ifndef _GFXFONT_H_
-#define _GFXFONT_H_
+/*
+ * Copyright (c) 2020 Gavin Hurlbut
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+
+#ifndef __adafruit_gfx_font_h_
+#define __adafruit_gfx_font_h_
 
 typedef struct { // Data stored PER GLYPH
 	uint16_t bitmapOffset;     // Pointer into GFXfont->bitmap
@@ -21,4 +28,4 @@ typedef struct { // Data stored for FONT AS A WHOLE:
 	uint8_t   yAdvance;    // Newline distance (y axis)
 } GFXfont;
 
-#endif // _GFXFONT_H_
+#endif /* __adafruit_gfx_font_h_ */
