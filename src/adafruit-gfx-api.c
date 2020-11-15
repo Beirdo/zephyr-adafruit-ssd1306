@@ -45,7 +45,7 @@ LOG_MODULE_REGISTER(adafruit_ssd1306, CONFIG_DISPLAY_LOG_LEVEL);
 #include "adafruit-gfx-cache.h"
 #include "adafruit-gfx-api.h"
 #include "adafruit-gfx-font.h"
-#include "utils.h"
+#include "adafruit-gfx-utils.h"
 
 static void _drawFastVLineInternal(int x, int y, int h, int color);
 static void _drawFastHLineInternal(int x, int y, int w, int color);

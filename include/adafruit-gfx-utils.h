@@ -1,17 +1,11 @@
-/* ========================================
+/*
+ * Copyright (c) 2020 Gavin Hurlbut
  *
- * Copyright YOUR COMPANY, THE YEAR
- * All Rights Reserved
- * UNPUBLISHED, LICENSED SOFTWARE.
- *
- * CONFIDENTIAL AND PROPRIETARY INFORMATION
- * WHICH IS THE PROPERTY OF your company.
- *
- * ========================================
-*/
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
-#ifndef __utils_h__
-#define __utils_h__
+#ifndef __adafruit_gfx_utils_h__
+#define __adafruit_gfx_utils_h__
 
 #define min(x, y) ((x) < (y) ? (x) : (y))
 #define max(x, y) ((x) > (y) ? (x) : (y))
@@ -43,16 +37,12 @@
 #define TO_WORD_AB(x) (((x) & 0xFFFF) << 16)
 #define TO_WORD_CD(x) ((x)  & 0xFFFF)
     
-#define TICKS_TO_MS(x)  ((x) * 1000 / configTICK_RATE_HZ)
-    
 #ifndef ustrlen
 #define ustrlen(x) (strlen((char *)(x)))
 #endif
 
 #define NELEMS(x) (sizeof(x) / sizeof((x)[0]))
 
-int16_t convert_temperature(uint16_t raw_value, int shifts, uint32_t mask_off_bits);
-    
-#endif // __utils_h__
+#endif // __adafruit_gfx_utils_h__
 
 /* [] END OF FILE */
