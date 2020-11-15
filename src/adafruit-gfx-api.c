@@ -47,25 +47,31 @@ LOG_MODULE_REGISTER(adafruit_ssd1306, CONFIG_DISPLAY_LOG_LEVEL);
 #include "adafruit-gfx-font.h"
 #include "utils.h"
 
-static void _drawFastVLineInternal(int16_t x, int16_t y, int16_t h, uint16_t color);
-static void _drawFastHLineInternal(int16_t x, int16_t y, int16_t w, uint16_t color);
+static void _drawFastVLineInternal(int x, int y, int h, int color);
+static void _drawFastHLineInternal(int x, int y, int w, int color);
+static int _draw_pixels_masked(int x, int y, int color, uint8_t mask);
+
 extern int ssd1306_display_write(const struct device *dev, uint8_t *buf, size_t len, bool command);
 
 struct adafruit_ssd1306_data_t {
   const struct device *dev;
-  struct adafruit_gfx_cache_t draw_cache;
-  struct adafruit_gfx_cache_t adafruit_logo;
+  struct adafruit_gfx_cache_t cache;
+  struct adafruit_gfx_cache_source_t draw_cache;
+  struct adafruit_gfx_cache_source_t adafruit_logo;
+#ifndef CONFIG_ADAFRUIT_SSD1306_CACHE
+  uint8_t draw_cache_buffer[SSD1306_RAM_MIRROR_SIZE];
+#endif
   uint8_t buffer[16];
-  int16_t raw_width;	// Raw display, never changes
-  int16_t raw_height;	// Raw display, never changes
-  int16_t width;	// modified by current rotation
-  int16_t height;	// modified by current rotation
-  int16_t cursor_x;
-  int16_t cursor_y;
-  uint16_t textcolor;
-  uint16_t textbgcolor;
-  uint8_t textsize;
-  uint8_t rotation;
+  int raw_width;	// Raw display, never changes
+  int raw_height;	// Raw display, never changes
+  int width;	// modified by current rotation
+  int height;	// modified by current rotation
+  int cursor_x;
+  int cursor_y;
+  int textcolor;
+  int textbgcolor;
+  int textsize;
+  int rotation;
   bool wrap;
   bool cp437;  // if set, use correct CP437 characterset (default off)
   bool show_logo;
@@ -78,8 +84,8 @@ static struct adafruit_ssd1306_data_t display_data = {
   .cursor_x = 0,
   .cursor_y = 0,
   .textsize = 1,
-  .textcolor = 0xFFFF,
-  .textbgcolor = 0xFFFF,
+  .textcolor = WHITE,
+  .textbgcolor = WHITE,
   .wrap = true,
   .cp437 = false,
   .gfxFont = NULL,
@@ -102,13 +108,23 @@ int adafruit_gfx_initialize(void) {
   display_data.width = display_data.raw_width;
   display_data.height = display_data.raw_height;
 
-  ret = adafruit_gfx_cache_init(&display_data.draw_cache, 0, NULL, 0);
+  ret = adafruit_gfx_cache_init(&display_data.cache);
   if (ret != 0) {
     return ret;
   }
-  
-  ret = adafruit_gfx_cache_init(&display_data.adafruit_logo, SSD1306_RAM_MIRROR_SIZE, 
-                                adafruit_logo, SSD1306_RAM_MIRROR_SIZE);
+
+  uint8_t *buf = NULL;
+#ifndef CONFIG_ADAFRUIT_SSD1306_CACHE
+  buf = display_data.draw_cache_buffer;
+#endif
+
+  ret = adafruit_gfx_cache_source_init(&display_data.cache, &display_data.draw_cache, 0, buf);
+  if (ret != 0) {
+    return ret;
+  }
+
+  ret = adafruit_gfx_cache_source_init(&display_data.cache, &display_data.adafruit_logo, SSD1306_RAM_MIRROR_SIZE, 
+                                adafruit_logo);
   if (ret != 0) {
     return ret;
   }
@@ -238,19 +254,26 @@ int adafruit_gfx_display(void)
     return ret;
   }
 
-  struct adafruit_gfx_cache_t *cache = (display_data.show_logo ? &display_data.adafruit_logo : &display_data.draw_cache);
+  struct adafruit_gfx_cache_source_t *source = (display_data.show_logo ? &display_data.adafruit_logo : &display_data.draw_cache);
+  ret = adafruit_gfx_cache_source_choose(&display_data.cache, source);
+  if (ret != 0) {
+    return ret;
+  }
+  
   size_t line_addr;
+  uint8_t *pixel_addr;
+  
   for (line_addr = 0; line_addr < SSD1306_RAM_MIRROR_SIZE; line_addr += SSD1306_CACHE_LINE_SIZE) {
     /*
      * Send one cache row at a time.  This allows us to add support for external RAM
      * with a minimal on-CPU cache.
      */
-    ret = adafruit_gfx_cache_load_line(cache, line_addr, 0, NULL);
+    ret = adafruit_gfx_cache_get_pixel_addr(&display_data.cache, line_addr, 0, &pixel_addr); 
     if (ret != 0) {
       return ret;
     }
 
-    ret = ssd1306_display_write(display_data.dev, cache->line, SSD1306_CACHE_LINE_SIZE, false);
+    ret = ssd1306_display_write(display_data.dev, pixel_addr, SSD1306_CACHE_LINE_SIZE, false);
     if (ret != 0) {
       return ret;
     }
@@ -266,11 +289,15 @@ int adafruit_gfx_display(void)
 // clear everything
 void adafruit_gfx_clearDisplay(void) {
   display_data.show_logo = false;
-  adafruit_gfx_cache_clear_all(&display_data.draw_cache);
+  
+  int ret = adafruit_gfx_cache_source_choose(&display_data.cache, &display_data.draw_cache);
+  if (ret == 0) {
+    adafruit_gfx_cache_clear_all(&display_data.cache);
+  }
 }
 
 // the most basic function, set a single pixel
-void adafruit_gfx_drawPixel(int16_t x, int16_t y, uint16_t color)
+void adafruit_gfx_drawPixel(int x, int y, int color)
 {
   if ((x < 0) || (x >= display_data.width) || (y < 0) || (y >= display_data.height))
     return;
@@ -278,7 +305,7 @@ void adafruit_gfx_drawPixel(int16_t x, int16_t y, uint16_t color)
   // check rotation, move pixel around if necessary
   switch (display_data.rotation) {
   case 1:
-    _swap_int16(x, y);
+    _swap_int(x, y);
     x = display_data.raw_width - x - 1;
     break;
   case 2:
@@ -286,32 +313,16 @@ void adafruit_gfx_drawPixel(int16_t x, int16_t y, uint16_t color)
     y = display_data.raw_height - y - 1;
     break;
   case 3:
-    _swap_int16(x, y);
+    _swap_int(x, y);
     y = display_data.raw_height - y - 1;
     break;
   }
 
-  // x is which column
-  uint8_t mask = (1 << (y & 0x07));
-  
-  switch (color)
-  {
-    case WHITE:   
-      adafruit_gfx_cache_operCache(&display_data.draw_cache, x, y, SET_BITS, mask);  
-      break;
-    case BLACK:   
-      adafruit_gfx_cache_operCache(&display_data.draw_cache, x, y, CLEAR_BITS, mask);  
-      break;
-    case INVERSE: 
-      adafruit_gfx_cache_operCache(&display_data.draw_cache, x, y, TOGGLE_BITS, mask);  
-      break;
-    default:
-      return;
-  }
+  _draw_pixels_masked(x, y, color, SSD1306_PIXEL_MASK(y));
 }
 
 
-void adafruit_gfx_drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color) 
+void adafruit_gfx_drawFastHLine(int x, int y, int w, int color) 
 {
   int bSwap = 0;
   switch(display_data.rotation) {
@@ -321,7 +332,7 @@ void adafruit_gfx_drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color)
     case 1:
       // 90 degree rotation, swap x & y for rotation, then invert x
       bSwap = 1;
-      _swap_int16(x, y);
+      _swap_int(x, y);
       x = display_data.raw_width - x - 1;
       break;
     case 2:
@@ -333,7 +344,7 @@ void adafruit_gfx_drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color)
     case 3:
       // 270 degree rotation, swap x & y for rotation, then invert y  and adjust y for w (not to become h)
       bSwap = 1;
-      _swap_int16(x, y);
+      _swap_int(x, y);
       y = display_data.raw_height - y - 1;
       y -= (w-1);
       break;
@@ -346,7 +357,7 @@ void adafruit_gfx_drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color)
   }
 }
 
-static void _drawFastHLineInternal(int16_t x, int16_t y, int16_t w, uint16_t color) 
+static void _drawFastHLineInternal(int x, int y, int w, int color) 
 {
   // Do bounds/limit checks
   if (y < 0 || y >= display_data.raw_height) {
@@ -369,26 +380,15 @@ static void _drawFastHLineInternal(int16_t x, int16_t y, int16_t w, uint16_t col
     return;
   }
 
-  register uint8_t mask = SSD1306_PIXEL_MASK(y);
-  for (uint8_t i = x; i < x + w; i++) {
-    switch (color)
-    {
-      case WHITE:
-        adafruit_gfx_cache_operCache(&display_data.draw_cache, i, y, SET_BITS, mask);
-        break;
-      case BLACK:
-        adafruit_gfx_cache_operCache(&display_data.draw_cache, i, y, CLEAR_BITS, mask);
-        break;
-      case INVERSE:
-        adafruit_gfx_cache_operCache(&display_data.draw_cache, i, y, TOGGLE_BITS, mask);
-        break;
-      default:
-        return;
-    }
+  int ret = adafruit_gfx_cache_source_choose(&display_data.cache, &display_data.draw_cache);
+  if (ret != 0) {
+    return;
   }
+  
+  _draw_pixels_masked(x, y, color, SSD1306_PIXEL_MASK(y));
 }
 
-void adafruit_gfx_drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t color) {
+void adafruit_gfx_drawFastVLine(int x, int y, int h, int color) {
   int bSwap = 0;
   switch(display_data.rotation) {
     case 0:
@@ -396,7 +396,7 @@ void adafruit_gfx_drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t color)
     case 1:
       // 90 degree rotation, swap x & y for rotation, then invert x and adjust x for h (now to become w)
       bSwap = 1;
-      _swap_int16(x, y);
+      _swap_int(x, y);
       x = display_data.raw_width - x - 1;
       x -= (h-1);
       break;
@@ -409,7 +409,7 @@ void adafruit_gfx_drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t color)
     case 3:
       // 270 degree rotation, swap x & y for rotation, then invert y
       bSwap = 1;
-      _swap_int16(x, y);
+      _swap_int(x, y);
       y = display_data.raw_height - y - 1;
       break;
   }
@@ -426,7 +426,7 @@ static const uint8_t premask[8] = { 0x00, 0x80, 0xC0, 0xE0, 0xF0, 0xF8, 0xFC, 0x
 static const uint8_t postmask[8] = { 0x00, 0x01, 0x03, 0x07, 0x0F, 0x1F, 0x3F, 0x7F };
 
 
-static void _drawFastVLineInternal(int16_t x, int16_t y, int16_t h, uint16_t color) 
+static void _drawFastVLineInternal(int x, int y, int h, int color) 
 {
   int ret = 0;
 
@@ -468,19 +468,9 @@ static void _drawFastVLineInternal(int16_t x, int16_t y, int16_t h, uint16_t col
       mask &= (0xFF >> (mod - h));
     }
 
-    switch (color)
-    {
-      case WHITE:
-        adafruit_gfx_cache_operCache(&display_data.draw_cache, x, y, SET_BITS, mask);
-        break;
-      case BLACK:
-        adafruit_gfx_cache_operCache(&display_data.draw_cache, x, y, CLEAR_BITS, mask);
-        break;
-      case INVERSE:
-        adafruit_gfx_cache_operCache(&display_data.draw_cache, x, y, TOGGLE_BITS, mask);
-        break;
-      default:
-        return;
+    ret = _draw_pixels_masked(x, y, color, mask);
+    if (ret != 0) {
+      return;
     }
 
     // fast exit if we're done here!
@@ -498,7 +488,7 @@ static void _drawFastVLineInternal(int16_t x, int16_t y, int16_t h, uint16_t col
       // separate copy of the code so we don't impact performance of the
       // black/white write version with an extra comparison per loop
       do {
-        adafruit_gfx_cache_operCache(&display_data.draw_cache, x, y, TOGGLE_BITS, 0xFF);
+        adafruit_gfx_cache_operCache(&display_data.cache, x, y, TOGGLE_BITS, 0xFF);
 
         // adjust h & y (there's got to be a faster way for me to do this, but
         // this should still help a fair bit for now)
@@ -511,13 +501,13 @@ static void _drawFastVLineInternal(int16_t x, int16_t y, int16_t h, uint16_t col
       uint8_t *addr;
 
       do  {
-        ret = adafruit_gfx_cache_get_pixel_addr(&display_data.draw_cache, x, y, &addr);
+        ret = adafruit_gfx_cache_get_pixel_addr(&display_data.cache, x, y, &addr);
         if (ret != 0) {
             return;
         }
     
       	*addr = data;
-      	display_data.draw_cache.dirty = true;
+      	display_data.cache.dirty = true;
 
         // adjust h & y (there's got to be a faster way for me to do this, but
         // this should still help a fair bit for now)
@@ -529,40 +519,52 @@ static void _drawFastVLineInternal(int16_t x, int16_t y, int16_t h, uint16_t col
 
   // now do the final partial byte, if necessary
   if (h) {
-    mod = h & 0x07;
-    // this time we want to mask the low bits of the byte, vs the high bits we
-    // did above
-    // register uint8_t mask = (1 << mod) - 1;
-    // note - lookup table results in a nearly 10% performance improvement in
-    // fill* functions
-    register uint8_t mask = postmask[mod];
+    _draw_pixels_masked(x, y, color, postmask[h & 0x07]);
+  }
+}
+
+
+static int _draw_pixels_masked(int x, int y, int color, uint8_t mask)
+{
+    if (!mask) {
+      return 0;
+    }
+    
+    int ret = adafruit_gfx_cache_source_choose(&display_data.cache, &display_data.draw_cache);
+    if (ret != 0) {
+      return ret;
+    }
 
     switch (color)
     {
       case WHITE:
-        adafruit_gfx_cache_operCache(&display_data.draw_cache, x, y, SET_BITS, mask);
+        adafruit_gfx_cache_operCache(&display_data.cache, x, y, SET_BITS, mask);
         break;
       case BLACK:
-        adafruit_gfx_cache_operCache(&display_data.draw_cache, x, y, CLEAR_BITS, mask);
+        adafruit_gfx_cache_operCache(&display_data.cache, x, y, CLEAR_BITS, mask);
         break;
       case INVERSE:
-        adafruit_gfx_cache_operCache(&display_data.draw_cache, x, y, TOGGLE_BITS, mask);
+        adafruit_gfx_cache_operCache(&display_data.cache, x, y, TOGGLE_BITS, mask);
         break;
+      default:
+        return -EINVAL;
     }
-  }
+    
+    return 0;
 }
+
 
 // From Adafruit_GFX base class, ported to PSoC with FreeRTOS (and C)
 
 
 // Draw a circle outline
-void adafruit_gfx_drawCircle(int16_t x0, int16_t y0, int16_t r, uint16_t color) 
+void adafruit_gfx_drawCircle(int x0, int y0, int r, int color) 
 {
   int16_t f = 1 - r;
   int16_t ddF_x = 1;
   int16_t ddF_y = -2 * r;
-  int16_t x = 0;
-  int16_t y = r;
+  int x = 0;
+  int y = r;
 
   adafruit_gfx_drawPixel(x0  , y0+r, color);
   adafruit_gfx_drawPixel(x0  , y0-r, color);
@@ -590,13 +592,13 @@ void adafruit_gfx_drawCircle(int16_t x0, int16_t y0, int16_t r, uint16_t color)
   }
 }
 
-void adafruit_gfx_drawCircleHelper( int16_t x0, int16_t y0,
- int16_t r, uint8_t cornername, uint16_t color) {
+void adafruit_gfx_drawCircleHelper( int x0, int y0,
+ int r, uint8_t cornername, int color) {
   int16_t f     = 1 - r;
   int16_t ddF_x = 1;
   int16_t ddF_y = -2 * r;
-  int16_t x     = 0;
-  int16_t y     = r;
+  int x     = 0;
+  int y     = r;
 
   while (x < y) {
     if (f >= 0) {
@@ -626,21 +628,21 @@ void adafruit_gfx_drawCircleHelper( int16_t x0, int16_t y0,
   }
 }
 
-void adafruit_gfx_fillCircle(int16_t x0, int16_t y0, int16_t r,
- uint16_t color) {
+void adafruit_gfx_fillCircle(int x0, int y0, int r,
+ int color) {
   adafruit_gfx_drawFastVLine(x0, y0-r, 2*r+1, color);
   adafruit_gfx_fillCircleHelper(x0, y0, r, 3, 0, color);
 }
 
 // Used to do circles and roundrects
-void adafruit_gfx_fillCircleHelper(int16_t x0, int16_t y0, int16_t r,
- uint8_t cornername, int16_t delta, uint16_t color) {
+void adafruit_gfx_fillCircleHelper(int x0, int y0, int r,
+     uint8_t cornername, int delta, int color) {
 
   int16_t f     = 1 - r;
   int16_t ddF_x = 1;
   int16_t ddF_y = -2 * r;
-  int16_t x     = 0;
-  int16_t y     = r;
+  int x     = 0;
+  int y     = r;
 
   while (x<y) {
     if (f >= 0) {
@@ -664,17 +666,16 @@ void adafruit_gfx_fillCircleHelper(int16_t x0, int16_t y0, int16_t r,
 }
 
 // Bresenham's algorithm - thx wikpedia
-void adafruit_gfx_drawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1,
- uint16_t color) {
+void adafruit_gfx_drawLine(int x0, int y0, int x1, int y1, int color) {
   int16_t steep = _abs(y1 - y0) > _abs(x1 - x0);
   if (steep) {
-    _swap_int16(x0, y0);
-    _swap_int16(x1, y1);
+    _swap_int(x0, y0);
+    _swap_int(x1, y1);
   }
 
   if (x0 > x1) {
-    _swap_int16(x0, x1);
-    _swap_int16(y0, y1);
+    _swap_int(x0, x1);
+    _swap_int(y0, y1);
   }
 
   int16_t dx, dy;
@@ -682,7 +683,7 @@ void adafruit_gfx_drawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1,
   dy = _abs(y1 - y0);
 
   int16_t err = dx / 2;
-  int16_t ystep;
+  int ystep;
 
   if (y0 < y1) {
     ystep = 1;
@@ -705,29 +706,26 @@ void adafruit_gfx_drawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1,
 }
 
 // Draw a rectangle
-void adafruit_gfx_drawRect(int16_t x, int16_t y, int16_t w, int16_t h,
- uint16_t color) {
+void adafruit_gfx_drawRect(int x, int y, int w, int h, int color) {
   adafruit_gfx_drawFastHLine(x, y, w, color);
   adafruit_gfx_drawFastHLine(x, y+h-1, w, color);
   adafruit_gfx_drawFastVLine(x, y, h, color);
   adafruit_gfx_drawFastVLine(x+w-1, y, h, color);
 }
 
-void adafruit_gfx_fillRect(int16_t x, int16_t y, int16_t w, int16_t h,
- uint16_t color) {
+void adafruit_gfx_fillRect(int x, int y, int w, int h, int color) {
   // Update in subclasses if desired!
   for (int16_t i = x; i < x + w; i++) {
     adafruit_gfx_drawFastVLine(i, y, h, color);
   }
 }
 
-void adafruit_gfx_fillScreen(uint16_t color) {
+void adafruit_gfx_fillScreen(int color) {
   adafruit_gfx_fillRect(0, 0, display_data.width, display_data.height, color);
 }
 
 // Draw a rounded rectangle
-void adafruit_gfx_drawRoundRect(int16_t x, int16_t y, int16_t w,
- int16_t h, int16_t r, uint16_t color) {
+void adafruit_gfx_drawRoundRect(int x, int y, int w, int h, int r, int color) {
   // smarter version
   adafruit_gfx_drawFastHLine(x+r  , y    , w-2*r, color); // Top
   adafruit_gfx_drawFastHLine(x+r  , y+h-1, w-2*r, color); // Bottom
@@ -741,8 +739,8 @@ void adafruit_gfx_drawRoundRect(int16_t x, int16_t y, int16_t w,
 }
 
 // Fill a rounded rectangle
-void adafruit_gfx_fillRoundRect(int16_t x, int16_t y, int16_t w,
- int16_t h, int16_t r, uint16_t color) {
+void adafruit_gfx_fillRoundRect(int x, int y, int w,
+ int h, int r, int color) {
   // smarter version
   adafruit_gfx_fillRect(x+r, y, w-2*r, h, color);
 
@@ -752,28 +750,28 @@ void adafruit_gfx_fillRoundRect(int16_t x, int16_t y, int16_t w,
 }
 
 // Draw a triangle
-void adafruit_gfx_drawTriangle(int16_t x0, int16_t y0,
- int16_t x1, int16_t y1, int16_t x2, int16_t y2, uint16_t color) {
+void adafruit_gfx_drawTriangle(int x0, int y0,
+ int x1, int y1, int x2, int y2, int color) {
   adafruit_gfx_drawLine(x0, y0, x1, y1, color);
   adafruit_gfx_drawLine(x1, y1, x2, y2, color);
   adafruit_gfx_drawLine(x2, y2, x0, y0, color);
 }
 
 // Fill a triangle
-void adafruit_gfx_fillTriangle(int16_t x0, int16_t y0,
- int16_t x1, int16_t y1, int16_t x2, int16_t y2, uint16_t color) {
+void adafruit_gfx_fillTriangle(int x0, int y0,
+ int x1, int y1, int x2, int y2, int color) {
 
   int16_t a, b, y, last;
 
   // Sort coordinates by Y order (y2 >= y1 >= y0)
   if (y0 > y1) {
-    _swap_int16(y0, y1); _swap_int16(x0, x1);
+    _swap_int(y0, y1); _swap_int(x0, x1);
   } 
   if (y1 > y2) {
-    _swap_int16(y2, y1); _swap_int16(x2, x1);
+    _swap_int(y2, y1); _swap_int(x2, x1);
   }
   if (y0 > y1) {
-    _swap_int16(y0, y1); _swap_int16(x0, x1);
+    _swap_int(y0, y1); _swap_int(x0, x1);
   }
 
   if(y0 == y2) { // Handle awkward all-on-same-line case as its own thing
@@ -815,7 +813,7 @@ void adafruit_gfx_fillTriangle(int16_t x0, int16_t y0,
     a = x0 + (x1 - x0) * (y - y0) / (y1 - y0);
     b = x0 + (x2 - x0) * (y - y0) / (y2 - y0);
     */
-    if(a > b) _swap_int16(a,b);
+    if(a > b) _swap_int(a,b);
     adafruit_gfx_drawFastHLine(a, y, b-a+1, color);
   }
 
@@ -832,7 +830,7 @@ void adafruit_gfx_fillTriangle(int16_t x0, int16_t y0,
     a = x1 + (x2 - x1) * (y - y1) / (y2 - y1);
     b = x0 + (x2 - x0) * (y - y0) / (y2 - y0);
     */
-    if(a > b) _swap_int16(a,b);
+    if(a > b) _swap_int(a,b);
     adafruit_gfx_drawFastHLine(a, y, b-a+1, color);
   }
 }
@@ -841,18 +839,24 @@ void adafruit_gfx_fillTriangle(int16_t x0, int16_t y0,
 // provided bitmap buffer using the specified foreground (for set bits)
 // and background (for clear bits) colors.
 // If foreground and background are the same, unset bits are transparent
-void adafruit_gfx_drawBitmap(int16_t x, int16_t y, uint8_t *bitmap,
-      int16_t w, int16_t h, uint16_t color, uint16_t bg) {
-
-  int16_t i, j, byteWidth = (w + 7) / 8;
+void adafruit_gfx_drawBitmap(int x, int y, uint8_t *bitmap, int w, int h, int color, int bg) 
+{
+  int i, j, byteWidth = (w + 7) / 8;
   uint8_t byte = 0;
 
   for(j=0; j<h; j++) {
     for(i=0; i<w; i++ ) {
-      if(i & 7) byte <<= 1;
-      else      byte   = bitmap[j * byteWidth + i / 8];
-      if(byte & 0x80) adafruit_gfx_drawPixel(x+i, y+j, color);
-      else if(color != bg) adafruit_gfx_drawPixel(x+i, y+j, bg);
+      if(i & 7) {
+        byte <<= 1;
+      } else {
+        byte = bitmap[j * byteWidth + i / 8];
+      }
+      
+      if(byte & 0x80) {
+        adafruit_gfx_drawPixel(x+i, y+j, color);
+      } else if(color != bg) {
+        adafruit_gfx_drawPixel(x+i, y+j, bg);
+      }
     }
   }
 }
@@ -860,72 +864,76 @@ void adafruit_gfx_drawBitmap(int16_t x, int16_t y, uint8_t *bitmap,
 //Draw XBitMap Files (*.xbm), exported from GIMP,
 //Usage: Export from GIMP to *.xbm, rename *.xbm to *.c and open in editor.
 //C Array can be directly used with this function
-void adafruit_gfx_drawXBitmap(int16_t x, int16_t y,
- const uint8_t *bitmap, int16_t w, int16_t h, uint16_t color) {
+void adafruit_gfx_drawXBitmap(int x, int y,
+ const uint8_t *bitmap, int w, int h, int color) {
 
-  int16_t i, j, byteWidth = (w + 7) / 8;
+  int i, j, byteWidth = (w + 7) / 8;
   uint8_t byte = 0;
 
   for(j=0; j<h; j++) {
     for(i=0; i<w; i++ ) {
-      if(i & 7) byte >>= 1;
-      else      byte   = bitmap[j * byteWidth + i / 8];
-      if(byte & 0x01) adafruit_gfx_drawPixel(x+i, y+j, color);
+      if(i & 7) {
+        byte >>= 1;
+      } else {
+        byte = bitmap[j * byteWidth + i / 8];
+      }
+      
+      if(byte & 0x01) {
+        adafruit_gfx_drawPixel(x+i, y+j, color);
+      }
     }
   }
 }
 
 size_t adafruit_gfx_write(uint8_t c) {
-  if(!display_data.gfxFont) { // 'Classic' built-in font
-
-    if(c == '\n') {
-      display_data.cursor_y += display_data.textsize*8;
-      display_data.cursor_x  = 0;
-    } else if(c == '\r') {
-      // skip em
-    } else {
-      if(display_data.wrap && ((display_data.cursor_x + display_data.textsize * 6) >= display_data.width)) { // Heading off edge?
-        display_data.cursor_x  = 0;            // Reset x to zero
-        display_data.cursor_y += display_data.textsize * 8; // Advance y one line
-      }
-      adafruit_gfx_drawChar(display_data.cursor_x, display_data.cursor_y, c, display_data.textcolor, display_data.textbgcolor, display_data.textsize);
-      display_data.cursor_x += display_data.textsize * 6;
+  GFXfont *font = display_data.gfxFont;
+  
+  if(!font) { // 'Classic' built-in font
+    font = (GFXfont *)&adafruit_gfx_default_font;
+  }
+  
+  if(c == '\n') {
+    display_data.cursor_x  = 0;
+    display_data.cursor_y += display_data.textsize * display_data.gfxFont->yAdvance;
+  } else if (c == '\r') {
+    return 0;
+  } else {
+    uint8_t first = display_data.gfxFont->first;
+    if((c < first) || (c > display_data.gfxFont->last)) {
+      return 0;
     }
-
-  } else { // Custom font
-
-    if(c == '\n') {
-      display_data.cursor_x  = 0;
-      display_data.cursor_y += (int16_t)display_data.textsize * display_data.gfxFont->yAdvance;
-    } else if(c != '\r') {
-      uint8_t first = display_data.gfxFont->first;
-      if((c >= first) && (c <= display_data.gfxFont->last)) {
-        uint8_t   c2    = c - display_data.gfxFont->first;
-        GFXglyph *glyph = &(display_data.gfxFont->glyph[c2]);
-        uint8_t   w     = glyph->width,
-                h     = glyph->height;
-        if((w > 0) && (h > 0)) { // Is there an associated bitmap?
-          int16_t xo = glyph->xOffset;
-          if(display_data.wrap && ((display_data.cursor_x + display_data.textsize * (xo + w)) >= display_data.width)) {
-            // Drawing character would go off right edge; wrap to new line
-            display_data.cursor_x  = 0;
-            display_data.cursor_y += (int16_t)display_data.textsize * display_data.gfxFont->yAdvance;
-          }
-          adafruit_gfx_drawChar(display_data.cursor_x, display_data.cursor_y, c, display_data.textcolor, display_data.textbgcolor, display_data.textsize);
-        }
-        display_data.cursor_x += glyph->xAdvance * (int16_t)display_data.textsize;
-      }
+    
+    uint8_t c2 = c - display_data.gfxFont->first;
+    GFXglyph *glyph = display_data.gfxFont->fixed_glyph;
+    if (!glyph) {
+      glyph = &(display_data.gfxFont->glyph[c2]);
     }
+    
+    int w = glyph->width;
+    int h = glyph->height;
+    
+    if((w > 0) && (h > 0)) { // Is there an associated bitmap?
+      int xo = glyph->xOffset;
+      if(display_data.wrap && ((display_data.cursor_x + display_data.textsize * (xo + w)) >= display_data.width)) {
+        // Drawing character would go off right edge; wrap to new line
+        display_data.cursor_x = 0;
+        display_data.cursor_y += display_data.textsize * display_data.gfxFont->yAdvance;
+      }
+      adafruit_gfx_drawChar(display_data.cursor_x, display_data.cursor_y, c, 
+          display_data.textcolor, display_data.textbgcolor, display_data.textsize);
+    }
+    display_data.cursor_x += glyph->xAdvance * display_data.textsize;
   }
 
   return 1;
 }
 
 // Draw a character
-void adafruit_gfx_drawChar(int16_t x, int16_t y, unsigned char c,
- uint16_t color, uint16_t bg, uint8_t size) {
-
-  if(!display_data.gfxFont) { // 'Classic' built-in font
+void adafruit_gfx_drawChar(int x, int y, unsigned char c, int color, int bg, int size) {
+  GFXfont *font = display_data.gfxFont;
+  
+  if(!font) { // 'Classic' built-in font
+    font = (GFXfont *)&adafruit_gfx_default_font;
 
     if((x >= display_data.width)   || // Clip right
        (y >= display_data.height)  || // Clip bottom
@@ -933,23 +941,33 @@ void adafruit_gfx_drawChar(int16_t x, int16_t y, unsigned char c,
        ((y + 8 * size - 1) < 0))     // Clip top
       return;
 
-    if(!display_data.cp437 && (c >= 176)) c++; // Handle 'classic' charset behavior
+    if(!display_data.cp437 && (c >= 176)) {
+      c++; // Handle 'classic' charset behavior
+    }
 
-    for(int8_t i=0; i<6; i++ ) {
-      uint8_t line;
-      if(i < 5) line = adafruit_gfx_default_font[(c*5)+i];
-      else      line = 0x0;
-      for(int8_t j=0; j<8; j++, line >>= 1) {
+    for (int i = 0; i < 6; i++) {
+      int line = 0x00;
+      
+      if (i < 5) {
+        line = font->bitmap[(c*5)+i];
+      }
+
+      for(int j = 0; j < 8; j++, line >>= 1) {
         if(line & 0x1) {
-          if(size == 1) adafruit_gfx_drawPixel(x+i, y+j, color);
-          else          adafruit_gfx_fillRect(x+(i*size), y+(j*size), size, size, color);
+          if(size == 1) {
+            adafruit_gfx_drawPixel(x+i, y+j, color);
+          } else {
+            adafruit_gfx_fillRect(x+(i*size), y+(j*size), size, size, color);
+          }
         } else if(bg != color) {
-          if(size == 1) adafruit_gfx_drawPixel(x+i, y+j, bg);
-          else          adafruit_gfx_fillRect(x+i*size, y+j*size, size, size, bg);
+          if(size == 1) {
+            adafruit_gfx_drawPixel(x+i, y+j, bg);
+          } else {
+            adafruit_gfx_fillRect(x+i*size, y+j*size, size, size, bg);
+          }
         }
       }
     }
-
   } else { // Custom font
 
     // Character is assumed previously filtered by write() to eliminate
@@ -960,15 +978,19 @@ void adafruit_gfx_drawChar(int16_t x, int16_t y, unsigned char c,
     GFXglyph *glyph  = &(display_data.gfxFont->glyph[c]);
     uint8_t  *bitmap = display_data.gfxFont->bitmap;
 
-    uint16_t bo = glyph->bitmapOffset;
-    uint8_t  w  = glyph->width,
-             h  = glyph->height;
+    int bo = glyph->bitmapOffset;
+    int w = glyph->width;
+    int h = glyph->height;
     
-    //uint8_t xa = glyph->xAdvance;
-    int8_t   xo = glyph->xOffset,
-             yo = glyph->yOffset;
-    uint8_t  xx, yy, bits = 0, bit = 0;
-    int16_t  xo16 = 0, yo16 = 0;
+    int xo = glyph->xOffset;
+    int yo = glyph->yOffset;
+    
+    int xx;
+    int yy;
+    int bits = 0;
+    int bit = 0;
+    int xo16 = 0;
+    int yo16 = 0;
 
     if(size > 1) {
       xo16 = xo;
@@ -995,9 +1017,10 @@ void adafruit_gfx_drawChar(int16_t x, int16_t y, unsigned char c,
 
     for(yy=0; yy<h; yy++) {
       for(xx=0; xx<w; xx++) {
-        if(!(bit++ & 7)) {
+        if(!(bit++ & 0x07)) {
           bits = bitmap[bo++];
         }
+        
         if(bits & 0x80) {
           if(size == 1) {
             adafruit_gfx_drawPixel(x+xo+xx, y+yo+yy, color);
@@ -1008,28 +1031,27 @@ void adafruit_gfx_drawChar(int16_t x, int16_t y, unsigned char c,
         bits <<= 1;
       }
     }
-
   } // End classic vs custom font
 }
 
-void adafruit_gfx_setCursor(int16_t x, int16_t y) {
+void adafruit_gfx_setCursor(int x, int y) {
   display_data.cursor_x = x;
   display_data.cursor_y = y;
 }
 
-int16_t adafruit_gfx_getCursorX(void) {
+int adafruit_gfx_getCursorX(void) {
   return display_data.cursor_x;
 }
 
-int16_t adafruit_gfx_getCursorY(void) {
+int adafruit_gfx_getCursorY(void) {
   return display_data.cursor_y;
 }
 
-void adafruit_gfx_setTextSize(uint8_t s) {
-  display_data.textsize = (s > 0) ? s : 1;
+void adafruit_gfx_setTextSize(int ts) {
+  display_data.textsize = min(ts, 1);
 }
 
-void adafruit_gfx_setTextColor(uint16_t c, uint16_t b) {
+void adafruit_gfx_setTextColor(int c, int b) {
   // For 'transparent' background, we'll set the bg
   // to the same as fg instead of using a flag
   display_data.textcolor   = c;
@@ -1040,12 +1062,12 @@ void adafruit_gfx_setTextWrap(bool w) {
   display_data.wrap = w;
 }
 
-uint8_t adafruit_gfx_getRotation(void) {
+int adafruit_gfx_getRotation(void) {
   return display_data.rotation;
 }
 
-void adafruit_gfx_setRotation(uint8_t x) {
-  display_data.rotation = (x & 3);
+void adafruit_gfx_setRotation(int x) {
+  display_data.rotation = (x & 0x03);
   switch(display_data.rotation) {
    case 0:
    case 2:
@@ -1086,102 +1108,97 @@ void adafruit_gfx_setFont(const GFXfont *f) {
   display_data.gfxFont = (GFXfont *)f;
 }
 
-// Pass string and a cursor position, returns UL corner and W,H.
-void adafruit_gfx_getTextBounds(char *str, int16_t x, int16_t y,
- int16_t *x1, int16_t *y1, uint16_t *w, uint16_t *h) {
+// Pass string and a cursor position, returns UL corner and W, H.
+void adafruit_gfx_getTextBounds(char *str, int x, int y, int ts,
+                                int *x1, int *y1, int *w, int *h) {
+  GFXfont *font = display_data.gfxFont;
+  
+  if(!font) { // 'Classic' built-in font
+    font = (GFXfont *)&adafruit_gfx_default_font;
+  }
+
+  ts = min(ts, 1);
+
+  GFXglyph *fixed_glyph = font->fixed_glyph;
+  GFXglyph *glyph;
   uint8_t c; // Current character
+  
+  int minx = display_data.width;
+  int miny = display_data.height;
+  int maxx = -1;
+  int maxy = -1;
+  
+  int x_ul;
+  int y_ul;
+  int x_lr;
+  int y_lr;
 
-  *x1 = x;
-  *y1 = y;
-  *w  = *h = 0;
-
-  if(display_data.gfxFont) {
-
-    GFXglyph *glyph;
-    uint8_t   first = display_data.gfxFont->first,
-            last  = display_data.gfxFont->last,
-            gw, gh, xa;
-    int8_t    xo, yo;
-    int16_t   minx = display_data.width, miny = display_data.height, maxx = -1, maxy = -1,
-              gx1, gy1, gx2, gy2, ts = (int16_t)display_data.textsize,
-              ya = ts * display_data.gfxFont->yAdvance;
-
-    while((c = *str++)) {
-      if(c != '\n') { // Not a newline
-        if(c != '\r') { // Not a carriage return, is normal char
-          if((c >= first) && (c <= last)) { // Char present in current font
-            c    -= first;
-            glyph = &(display_data.gfxFont->glyph[c]);
-            gw    = glyph->width;
-            gh    = glyph->height;
-            xa    = glyph->xAdvance;
-            xo    = glyph->xOffset;
-            yo    = glyph->yOffset;
-            if(display_data.wrap && ((x + (((int16_t)xo + gw) * ts)) >= display_data.width)) {
-              // Line wrap
-              x  = 0;  // Reset x to 0
-              y += ya; // Advance y by 1 line
-            }
-            gx1 = x   + xo * ts;
-            gy1 = y   + yo * ts;
-            gx2 = gx1 + gw * ts - 1;
-            gy2 = gy1 + gh * ts - 1;
-            if(gx1 < minx) minx = gx1;
-            if(gy1 < miny) miny = gy1;
-            if(gx2 > maxx) maxx = gx2;
-            if(gy2 > maxy) maxy = gy2;
-            x += xa * ts;
-          }
-        } // Carriage return = do nothing
-      } else { // Newline
-        x  = 0;  // Reset x
-        y += ya; // Advance y by 1 line
+  while((c = *str++)) {
+    if (c == '\n') { // newline
+      x  = 0;  // Reset x
+      y += ts * display_data.gfxFont->yAdvance; // Advance y by 1 line
+    } else if (c == '\r') {
+      continue;
+    } else if((c < font->first) || (c > font->last)) { // Char not present in current font
+      continue;
+    } else {
+      c -= font->first;
+      glyph = fixed_glyph;
+      if (!glyph) {
+        glyph = &(display_data.gfxFont->glyph[c]);
       }
+
+      if(display_data.wrap && ((x + ((glyph->xOffset + glyph->width) * ts)) >= display_data.width)) {
+        // Line wrap
+        x = 0;  // Reset x to 0
+        y += ts * display_data.gfxFont->yAdvance; // Advance y by 1 line
+      }
+
+      x_ul = x + glyph->xOffset * ts;
+      y_ul = y + glyph->yOffset * ts;
+      x_lr = x_ul + glyph->width * ts - 1;
+      y_lr = y_ul + glyph->height * ts - 1;
+
+      x += glyph->xAdvance * ts;
+      
+      minx = min(minx, x_ul);
+      miny = min(miny, y_ul);
+      maxx = max(maxx, x_lr);
+      maxy = max(maxy, y_lr);
     }
-    // End of string
+  }
+
+  if (x1) {
     *x1 = minx;
+  }
+  
+  if (y1) {
     *y1 = miny;
-    if(maxx >= minx) *w  = maxx - minx + 1;
-    if(maxy >= miny) *h  = maxy - miny + 1;
-
-  } else { // Default font
-
-    uint16_t lineWidth = 0, maxWidth = 0; // Width of current, all lines
-
-    while((c = *str++)) {
-      if(c != '\n') { // Not a newline
-        if(c != '\r') { // Not a carriage return, is normal char
-          if(display_data.wrap && ((x + display_data.textsize * 6) >= display_data.width)) {
-            x  = 0;            // Reset x to 0
-            y += display_data.textsize * 8; // Advance y by 1 line
-            if(lineWidth > maxWidth) maxWidth = lineWidth; // Save widest line
-            lineWidth  = display_data.textsize * 6; // First char on new line
-          } else { // No line wrap, just keep incrementing X
-            lineWidth += display_data.textsize * 6; // Includes interchar x gap
-          }
-        } // Carriage return = do nothing
-      } else { // Newline
-        x  = 0;            // Reset x to 0
-        y += display_data.textsize * 8; // Advance y by 1 line
-        if(lineWidth > maxWidth) maxWidth = lineWidth; // Save widest line
-        lineWidth = 0;     // Reset lineWidth for new line
-      }
+  }
+  
+  if (w) {
+    if(maxx >= minx) {
+      *w = maxx - minx + 1;
+    } else {
+      *w = 0;
     }
-    // End of string
-    if(lineWidth) y += display_data.textsize * 8; // Add height of last (or only) line
-    if(lineWidth > maxWidth) maxWidth = lineWidth; // Is the last or only line the widest?
-    *w = maxWidth - 1;               // Don't include last interchar x gap
-    *h = y - *y1;
-
-  } // End classic vs custom font
+  }
+  
+  if (h) {
+    if(maxy >= miny) {
+      *h = maxy - miny + 1;
+    } else {
+      *h = 0;
+    }
+  }
 }
 
 // Return the size of the display (per current rotation)
-int16_t adafruit_gfx_width(void) {
+int adafruit_gfx_width(void) {
   return display_data.width;
 }
 
-int16_t adafruit_gfx_height(void) {
+int adafruit_gfx_height(void) {
   return display_data.height;
 }
 

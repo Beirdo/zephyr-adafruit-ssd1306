@@ -13,22 +13,33 @@
 #include "adafruit-gfx-defines.h"
 
 
-struct adafruit_gfx_cache_t {
+struct adafruit_gfx_cache_source_t {
   const struct device *dev;
+  size_t cache_offset;
+  uint8_t *buffer;
+};
+
+struct adafruit_gfx_cache_t {
+  struct adafruit_gfx_cache_source_t *source;
+#ifdef CONFIG_ADAFRUIT_SSD1306_CACHE
   uint8_t line[SSD1306_CACHE_LINE_SIZE];
+#endif
   bool initialized;
   size_t line_addr;
   bool dirty;
-  size_t start_offset;
 };
 
 
-int adafruit_gfx_cache_init(struct adafruit_gfx_cache_t *cache, size_t start_offset, const uint8_t *buf, size_t len);
+int adafruit_gfx_cache_init(struct adafruit_gfx_cache_t *cache);
+int adafruit_gfx_cache_source_init(struct adafruit_gfx_cache_t *cache, 
+        struct adafruit_gfx_cache_source_t *source, size_t start_offset, 
+        const uint8_t *buf);
 
 static inline void adafruit_gfx_cache_set_dirty(struct adafruit_gfx_cache_t *cache, bool dirty) {
     cache->dirty = dirty;
 }
 
+int adafruit_gfx_cache_source_choose(struct adafruit_gfx_cache_t *cache, struct adafruit_gfx_cache_source_t *source);
 void adafruit_gfx_cache_operCache(struct adafruit_gfx_cache_t *cache, int x, int y, oper_t oper_, uint8_t mask);
 
 int adafruit_gfx_cache_load_line(struct adafruit_gfx_cache_t *cache, int x, int y, size_t *pixel_addr);

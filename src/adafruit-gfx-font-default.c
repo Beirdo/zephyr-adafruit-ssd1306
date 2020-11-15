@@ -1,15 +1,12 @@
 // This is the 'classic' fixed-space bitmap font for Adafruit_GFX since 1.0.
 // See gfxfont.h for newer custom bitmap font info.
 
-#ifndef FONT5X7_H
-#define FONT5X7_H
-
 #include <zephyr.h>
-#include "adafruit-gfx-defines.h"
+#include "adafruit-gfx-font.h"
 
 // Standard ASCII 5x7 font
 
-const uint8_t adafruit_gfx_default_font[] = {
+static const uint8_t _default_font_bitmap[] = {
 	0x00, 0x00, 0x00, 0x00, 0x00,
 	0x3E, 0x5B, 0x4F, 0x5B, 0x3E,
 	0x3E, 0x6B, 0x4F, 0x6B, 0x3E,
@@ -267,4 +264,21 @@ const uint8_t adafruit_gfx_default_font[] = {
 	0x00, 0x3C, 0x3C, 0x3C, 0x3C,
 	0x00, 0x00, 0x00, 0x00, 0x00  // #255 NBSP
 };
-#endif // FONT5X7_H
+
+static const GFXglyph _default_font_fixed_glyph = {
+	.bitmapOffset = 0,
+	.width = 5,
+	.height = 7,
+	.xAdvance = 6,
+	.xOffset = 0,
+	.yOffset = 0,
+};
+
+const GFXfont adafruit_gfx_font_default = {
+	.bitmap = (uint8_t *)_default_font_bitmap,
+	.fixed_glyph = (GFXglyph *)&_default_font_fixed_glyph,
+	.glyph = NULL,
+	.first = 0x00,
+	.last = 0xFF,
+	.yAdvance = 8,
+};

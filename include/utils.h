@@ -21,6 +21,10 @@
 #ifndef _swap_int16
 #define _swap_int16(a, b) { int16_t t = a; a = b; b = t; }
 #endif
+
+#ifndef _swap_int
+#define _swap_int(a, b) { int t = a; a = b; b = t; }
+#endif
     
 // 32-bit word => ABCD, 16 bit word => CD
 #define BYTE_A(x)  (((x) >> 24) & 0xFF)
