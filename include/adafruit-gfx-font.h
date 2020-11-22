@@ -29,4 +29,6 @@ typedef struct { // Data stored for FONT AS A WHOLE:
 	uint8_t   yAdvance;    // Newline distance (y axis)
 } GFXfont;
 
+extern const GFXfont adafruit_gfx_font_default;
+
 #endif /* __adafruit_gfx_font_h_ */

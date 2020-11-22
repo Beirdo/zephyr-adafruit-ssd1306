@@ -889,7 +889,7 @@ size_t adafruit_gfx_write(uint8_t c) {
   GFXfont *font = display_data.gfxFont;
   
   if(!font) { // 'Classic' built-in font
-    font = (GFXfont *)&adafruit_gfx_default_font;
+    font = (GFXfont *)&adafruit_gfx_font_default;
   }
   
   if(c == '\n') {
@@ -933,7 +933,7 @@ void adafruit_gfx_drawChar(int x, int y, unsigned char c, int color, int bg, int
   GFXfont *font = display_data.gfxFont;
   
   if(!font) { // 'Classic' built-in font
-    font = (GFXfont *)&adafruit_gfx_default_font;
+    font = (GFXfont *)&adafruit_gfx_font_default;
 
     if((x >= display_data.width)   || // Clip right
        (y >= display_data.height)  || // Clip bottom
@@ -1114,7 +1114,7 @@ void adafruit_gfx_getTextBounds(char *str, int x, int y, int ts,
   GFXfont *font = display_data.gfxFont;
   
   if(!font) { // 'Classic' built-in font
-    font = (GFXfont *)&adafruit_gfx_default_font;
+    font = (GFXfont *)&adafruit_gfx_font_default;
   }
 
   ts = min(ts, 1);
